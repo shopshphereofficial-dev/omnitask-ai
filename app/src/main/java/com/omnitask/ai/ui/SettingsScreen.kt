@@ -1,8 +1,9 @@
 package com.omnitask.ai.ui
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,20 +70,32 @@ fun SettingsScreen(
     var baseUrl by remember { mutableStateOf(current.baseUrl) }
     var apiKey by remember { mutableStateOf(current.apiKey) }
     var model by remember { mutableStateOf(current.model) }
-    var systemPrompt by remember { mutableStateOf(current.systemPrompt) }
     var autoExecute by remember { mutableStateOf(current.autoExecute) }
     var expanded by remember { mutableStateOf(false) }
     var showKey by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
 
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { }
+
+    fun granted(p: String): Boolean =
+        androidx.core.content.ContextCompat.checkSelfPermission(ctx, p) ==
+            PackageManager.PERMISSION_GRANTED
+
     fun buildConfig() = AppConfig(
         providerId = providerId,
         baseUrl = baseUrl,
         model = model,
         apiKey = apiKey,
-        systemPrompt = systemPrompt,
         autoExecute = autoExecute
+    )
+
+    val permissions = listOf(
+        Manifest.permission.READ_CONTACTS to Pair("Contacts", "Find people by name for calls, SMS and WhatsApp"),
+        Manifest.permission.SEND_SMS to Pair("SMS", "Send text messages directly without review"),
+        Manifest.permission.CALL_PHONE to Pair("Phone", "Place calls directly without the dialer")
     )
 
     Scaffold(
@@ -112,7 +126,7 @@ fun SettingsScreen(
                     value = Presets.nameOf(providerId),
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("AI Provider") },
+                    label = { Text("Default AI Provider") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -194,7 +208,7 @@ fun SettingsScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Auto-execute actions")
                     Text(
-                        "When off, you approve each task with a Run actions button",
+                        "When off, every task needs a tap on Run actions before it happens",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -202,32 +216,41 @@ fun SettingsScreen(
                 Switch(checked = autoExecute, onCheckedChange = { autoExecute = it })
             }
 
-            OutlinedTextField(
-                value = systemPrompt,
-                onValueChange = { systemPrompt = it },
-                label = { Text("System prompt") },
-                minLines = 4,
-                modifier = Modifier.fillMaxWidth()
-            )
+            HorizontalDivider()
 
+            Text("Permissions", fontWeight = FontWeight.Bold)
             Text(
-                "Optional permissions: to let the AI send SMS or place calls directly, " +
-                    "grant the SMS and Phone permissions from Android settings.",
+                "Grant what the AI is allowed to do. Everything works without these too - " +
+                    "it just opens a review screen instead.",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            OutlinedButton(
-                onClick = {
-                    ctx.startActivity(
-                        Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.parse("package:" + ctx.packageName)
-                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
+            permissions.forEach { (perm, info) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(info.first, fontWeight = FontWeight.Medium)
+                        Text(
+                            info.second,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            if (granted(perm)) "Granted" else "Not granted",
+                            fontSize = 12.sp,
+                            color = if (granted(perm)) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.error
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { permLauncher.launch(arrayOf(perm)) },
+                        enabled = !granted(perm)
+                    ) {
+                        Text("Grant")
+                    }
                 }
-            ) {
-                Text("Open app permission settings")
             }
+
+            HorizontalDivider()
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Button(
@@ -238,8 +261,9 @@ fun SettingsScreen(
                             try {
                                 val cfg = buildConfig()
                                 val r = withContext(Dispatchers.IO) {
-                                    AiClient.chat(
+                                    AiClient.chatBlocking(
                                         cfg,
+                                        "You are a test.",
                                         listOf(ChatMessage(role = "user", content = "Reply with exactly: OK"))
                                     )
                                 }
