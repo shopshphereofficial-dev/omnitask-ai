@@ -2,6 +2,7 @@ package com.omnitask.ai.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -92,10 +93,16 @@ fun SettingsScreen(
         autoExecute = autoExecute
     )
 
+    val photoPerm = if (Build.VERSION.SDK_INT >= 33)
+        Manifest.permission.READ_MEDIA_IMAGES
+    else
+        Manifest.permission.READ_EXTERNAL_STORAGE
+
     val permissions = listOf(
         Manifest.permission.READ_CONTACTS to Pair("Contacts", "Find people by name for calls, SMS and WhatsApp"),
         Manifest.permission.SEND_SMS to Pair("SMS", "Send text messages directly without review"),
-        Manifest.permission.CALL_PHONE to Pair("Phone", "Place calls directly without the dialer")
+        Manifest.permission.CALL_PHONE to Pair("Phone", "Place calls directly without the dialer"),
+        photoPerm to Pair("Photos", "Show gallery photos inside the chat")
     )
 
     Scaffold(

@@ -1,16 +1,21 @@
 # OmniTask AI
 
-A professional Android app that lets you give tasks to any AI using your own API key — and the AI actually **does things on your phone**: opens apps, sets alarms, messages your contacts on WhatsApp and SMS, makes calls and more.
+A professional Android app that lets you give tasks to any AI using your own API key — and the AI actually **does things on your phone**: opens apps, sets alarms, messages your contacts on WhatsApp and SMS, shows gallery photos in chat, prepares UPI payments, and runs tasks on a schedule. Voice input included.
 
-## What's new in v2.0
+## What's new in v3.0
 
-- **Fresh ChatGPT-style UI** — clean chat interface, sidebar menu, streaming replies (text appears as it is generated)
-- **Agents** — create multiple agents, each with its own name, emoji, personality and instructions; even give an agent its own AI provider
-- **Chat history** — conversations are saved and listed in the sidebar
-- **Contacts lookup** — "message Moomin on WhatsApp" now works; the AI finds the number from your contacts
-- **Permissions screen** — grant Contacts/SMS/Phone from inside the app
-- **More actions** — volume control, battery status
-- Long-press any message to copy it
+- **Voice input** — tap the mic and speak your task, no typing needed
+- **Scheduled tasks** — "every day at 7 AM turn on the flashlight", "every 30 minutes tell me the battery", "every Monday at 9 AM whatsapp Moomin good morning". Tasks run in the background, survive phone restarts, and show results as notifications
+- **UPI payments (safe)** — "pay 150 rupees to name@upi" opens your UPI app with everything filled in; you just enter your PIN. The AI never sees or enters your PIN — that is UPI's security design
+- **Gallery photos in chat** — "show my latest photo" displays it right inside the conversation (needs Photos permission)
+- The AI is now instructed not to refuse background/timed tasks — it schedules them instead
+
+## Also from v2.0
+
+- ChatGPT-style UI with streaming replies, sidebar menu and chat history
+- Agents — multiple assistants, each with its own personality and optionally its own AI provider
+- Contacts lookup — message/call people by name
+- In-app permissions screen
 
 ## Supported providers (bring your own API key)
 
@@ -25,31 +30,10 @@ A professional Android app that lets you give tasks to any AI using your own API
 | Ollama (free, local) | `http://localhost:11434/v1` | `llama3.2` | https://ollama.com |
 | Custom | anything you like | anything you like | — |
 
-The app speaks the **OpenAI-compatible `/chat/completions` API**, so any provider that supports it works. Model names become outdated — you can always edit the model in Settings or in an agent.
+## How to get the APK
 
-## What the AI can do on your phone
-
-- Open any installed app by name
-- Call / SMS / WhatsApp **your contacts by name** (Contacts permission) — messages arrive pre-filled for you to send
-- Open a URL, web search, YouTube search
-- Set alarms and timers
-- Flashlight on/off, volume control, battery status
-- Copy to clipboard, share sheet, Wi-Fi / Bluetooth settings
-
-## How to get the APK (no Android Studio needed)
-
-1. Go to the **Releases** section of this repository and download `OmniTask-AI.apk`.
-2. Copy it to your phone and install it (allow "install unknown apps" when asked). Google Play Protect may show a warning because the app is sideloaded — choose "More details" → "Install anyway".
-
-## Build it yourself
-
-```bash
-# needs JDK 17 and Android SDK 34
-gradle assembleDebug
-# APK at app/build/outputs/apk/debug/app-debug.apk
-```
-
-Or open the project in Android Studio (JDK 17) and press Run.
+1. Go to **Releases** and download `OmniTask-AI.apk`.
+2. Install it (allow "install unknown apps"). Play Protect may warn for sideloaded apps with SMS/call permissions — tap **More details → Install anyway**.
 
 ## Privacy
 
@@ -58,4 +42,4 @@ Or open the project in Android Studio (JDK 17) and press Run.
 
 ## Tech
 
-Kotlin, Jetpack Compose (Material 3), OkHttp, no other dependencies.
+Kotlin, Jetpack Compose (Material 3), OkHttp, AlarmManager — no other dependencies.
