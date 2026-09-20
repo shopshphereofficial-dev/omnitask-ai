@@ -3,6 +3,7 @@ package com.omnitask.ai.ui
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -102,7 +103,8 @@ fun SettingsScreen(
         Manifest.permission.READ_CONTACTS to Pair("Contacts", "Find people by name for calls, SMS and WhatsApp"),
         Manifest.permission.SEND_SMS to Pair("SMS", "Send text messages directly without review"),
         Manifest.permission.CALL_PHONE to Pair("Phone", "Place calls directly without the dialer"),
-        photoPerm to Pair("Photos", "Show gallery photos inside the chat")
+        photoPerm to Pair("Photos", "Show gallery photos inside the chat"),
+        Manifest.permission.ACCESS_FINE_LOCATION to Pair("Location", "Tell the AI where you are (with a Maps link)")
     )
 
     Scaffold(
@@ -254,6 +256,39 @@ fun SettingsScreen(
                     ) {
                         Text("Grant")
                     }
+                }
+            }
+
+            HorizontalDivider()
+
+            Text("Special access", fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Modify system settings", fontWeight = FontWeight.Medium)
+                    Text(
+                        "For brightness and screen timeout control",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        if (Settings.System.canWrite(ctx)) "Granted" else "Not granted",
+                        fontSize = 12.sp,
+                        color = if (Settings.System.canWrite(ctx)) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        ctx.startActivity(
+                            android.content.Intent(
+                                Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                                android.net.Uri.parse("package:" + ctx.packageName)
+                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    },
+                    enabled = !Settings.System.canWrite(ctx)
+                ) {
+                    Text("Grant")
                 }
             }
 
