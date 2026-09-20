@@ -10,9 +10,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.provider.AlarmClock
+import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.telephony.SmsManager
@@ -58,8 +61,8 @@ object ActionParser {
 
 /**
  * Executes AI-requested actions on the phone using standard Android intents.
- * Everything that needs a sensitive permission gracefully falls back to a
- * user-reviewable intent (dialer / SMS composer) when the permission is missing.
+ * Sensitive permissions gracefully fall back to user-reviewable intents
+ * (dialer / SMS composer) when they are not granted.
  */
 object ActionExecutor {
 
@@ -123,10 +126,13 @@ object ActionExecutor {
             "call" -> call(ctx, o)
             "send_sms" -> sendSms(ctx, o)
             "whatsapp_message" -> whatsapp(ctx, o)
+            "find_contact" -> findContact(ctx, o)
             "set_alarm" -> setAlarm(ctx, o)
             "set_timer" -> setTimer(ctx, o)
             "flashlight_on" -> torch(ctx, true)
             "flashlight_off" -> torch(ctx, false)
+            "set_volume" -> setVolume(ctx, o)
+            "battery_status" -> battery(ctx)
             "copy_to_clipboard" -> {
                 copy(ctx, o.optString("text"))
                 "Copied to clipboard"
@@ -146,6 +152,76 @@ object ActionExecutor {
             else -> "Unknown action type \"${o.optString("type")}\""
         }
     }
+
+    // ---------- contacts ----------
+
+    private class Target(val label: String, val number: String, val error: String?)
+
+    private fun hasContactsPermission(ctx: Context): Boolean =
+        ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /** Looks up a contact by (partial) name. Returns display name to phone number. */
+    private fun findContactNumber(ctx: Context, name: String): Pair<String, String>? {
+        val lower = name.trim().lowercase()
+        if (lower.isEmpty()) return null
+        return try {
+            ctx.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                null, null,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+            )?.use { c ->
+                var best: Pair<String, String>? = null
+                while (c.moveToNext()) {
+                    val dn = c.getString(0) ?: continue
+                    val num = c.getString(1) ?: continue
+                    val d = dn.lowercase()
+                    if (d == lower) return Pair(dn, num)
+                    if (best == null && d.contains(lower)) best = Pair(dn, num)
+                }
+                best
+            }
+        } catch (e: SecurityException) {
+            null
+        }
+    }
+
+    /** Resolves a "number" or "contact" field from an action into a phone number. */
+    private fun resolveTarget(ctx: Context, o: JSONObject): Target {
+        val number = o.optString("number").trim()
+        if (number.isNotEmpty()) {
+            val label = o.optString("contact").trim().ifEmpty { number }
+            return Target(label, number, null)
+        }
+        val contact = o.optString("contact").trim()
+        if (contact.isEmpty()) return Target("", "", "no number or contact given")
+        if (!hasContactsPermission(ctx)) {
+            return Target(
+                "", "",
+                "Contacts permission not granted - grant it from the app's Settings screen and try again"
+            )
+        }
+        val found = findContactNumber(ctx, contact)
+            ?: return Target("", "", "could not find a contact named \"$contact\" - check the spelling")
+        return Target(found.first, found.second, null)
+    }
+
+    private fun findContact(ctx: Context, o: JSONObject): String {
+        val name = o.optString("name").ifBlank { o.optString("contact") }.trim()
+        if (name.isEmpty()) return "find_contact failed: no name given"
+        if (!hasContactsPermission(ctx)) {
+            return "Contacts permission not granted - grant it from the app's Settings screen and try again"
+        }
+        val found = findContactNumber(ctx, name)
+            ?: return "No contact found for \"$name\""
+        return "Found: ${found.first} - ${found.second}"
+    }
+
+    // ---------- actions ----------
 
     private fun openApp(ctx: Context, o: JSONObject): String {
         val app = o.optString("app").trim()
@@ -210,52 +286,56 @@ object ActionExecutor {
     }
 
     private fun call(ctx: Context, o: JSONObject): String {
-        val number = o.optString("number").trim()
-        if (number.isEmpty()) return "call failed: no number given"
+        val t = resolveTarget(ctx, o)
+        if (t.error != null) return "call failed: ${t.error}"
         val action = if (o.optBoolean("direct", false) &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
         ) Intent.ACTION_CALL else Intent.ACTION_DIAL
         ctx.startActivity(
-            Intent(action, Uri.parse("tel:" + Uri.encode(number))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Intent(action, Uri.parse("tel:" + Uri.encode(t.number))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
-        return if (action == Intent.ACTION_CALL) "Calling $number…" else "Opened the dialer for $number"
+        return if (action == Intent.ACTION_CALL) "Calling ${t.label}…" else "Opened the dialer for ${t.label}"
     }
 
     private fun sendSms(ctx: Context, o: JSONObject): String {
-        val number = o.optString("number").trim()
+        val t = resolveTarget(ctx, o)
+        if (t.error != null) return "send_sms failed: ${t.error}"
         val message = o.optString("message")
-        if (number.isEmpty()) return "send_sms failed: no number given"
         if (o.optBoolean("send_direct", false) &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         ) {
             val sm: SmsManager =
                 if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java)
                 else SmsManager.getDefault()
-            sm.sendTextMessage(number, null, message, null, null)
-            return "SMS sent to $number"
+            sm.sendTextMessage(t.number, null, message, null, null)
+            return "SMS sent to ${t.label}"
         }
-        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(number)))
+        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(t.number)))
             .putExtra("sms_body", message)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ctx.startActivity(i)
-        return "Opened SMS to $number - review and press send"
+        return "Opened SMS to ${t.label} - review and press send"
     }
 
     private fun whatsapp(ctx: Context, o: JSONObject): String {
-        val number = o.optString("number").replace(Regex("[^0-9]"), "")
+        val t = resolveTarget(ctx, o)
+        if (t.error != null) return "whatsapp_message failed: ${t.error}"
         val message = o.optString("message", "")
-        if (number.isEmpty()) return "whatsapp_message failed: no number given"
-        val uri = "https://wa.me/$number" + if (message.isNotEmpty()) "?text=" + Uri.encode(message) else ""
+        var digits = t.number.replace(Regex("[^0-9]"), "")
+        // Local 10-digit numbers get a default country code so wa.me links work
+        if (digits.length == 10) digits = "91$digits"
+        if (digits.isEmpty()) return "whatsapp_message failed: no usable number for ${t.label}"
+        val uri = "https://wa.me/$digits" + if (message.isNotEmpty()) "?text=" + Uri.encode(message) else ""
         val i = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             i.setPackage("com.whatsapp")
             ctx.startActivity(i)
-            "Opened WhatsApp chat for +$number"
+            "Opened WhatsApp chat with ${t.label} ($digits)"
         } catch (e: Exception) {
             try {
                 i.setPackage(null)
                 ctx.startActivity(i)
-                "Opened WhatsApp link for +$number"
+                "Opened WhatsApp link for ${t.label}"
             } catch (e2: Exception) {
                 "WhatsApp is not installed"
             }
@@ -300,6 +380,28 @@ object ActionExecutor {
             }
         }
         return "No flashlight available on this device"
+    }
+
+    private fun setVolume(ctx: Context, o: JSONObject): String {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val streamName = o.optString("stream", "media").lowercase()
+        val stream = when (streamName) {
+            "ring" -> AudioManager.STREAM_RING
+            "alarm" -> AudioManager.STREAM_ALARM
+            else -> AudioManager.STREAM_MUSIC
+        }
+        val max = am.getStreamMaxVolume(stream)
+        val level = o.optInt("level", -1)
+        if (level < 0 || level > max) return "set_volume failed: level must be 0-$max"
+        am.setStreamVolume(stream, level, 0)
+        return "Volume ($streamName) set to $level out of $max"
+    }
+
+    private fun battery(ctx: Context): String {
+        val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val charging = bm.isCharging
+        return "Battery is at $level%" + if (charging) " and charging" else ""
     }
 
     private fun copy(ctx: Context, text: String) {
