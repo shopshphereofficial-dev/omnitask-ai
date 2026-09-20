@@ -104,9 +104,34 @@ data class Conversation(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+/**
+ * A scheduled task. Either a time-of-day schedule (hour/minute, optionally on
+ * specific days) or an interval schedule (every N minutes). When it fires,
+ * the stored actions run on the phone and a notification shows the results.
+ */
+data class Schedule(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val label: String = "Scheduled task",
+    val hour: Int? = null,
+    val minute: Int = 0,
+    val days: List<Int>? = null,          // Calendar.DAY_OF_WEEK values; null = every day
+    val intervalMinutes: Int? = null,     // if set, repeats every N minutes
+    val actionsJson: String,
+    val agentId: String = DEFAULT_AGENT_ID
+) {
+    fun describe(): String {
+        if (intervalMinutes != null && intervalMinutes > 0) {
+            return "Every $intervalMinutes min"
+        }
+        val days = this.days
+        val dayPart = if (days == null) "Daily" else days.size.toString() + " days a week"
+        return "%s at %02d:%02d".format(dayPart, hour ?: 0, minute)
+    }
+}
+
 const val DEFAULT_SYSTEM_PROMPT = """You are OmniTask, a helpful AI assistant living inside an Android phone app. You can chat normally AND execute tasks on the user's phone by emitting action commands.
 
-When the user asks you to DO something on the phone (open an app, set an alarm, call or message someone, search, etc.), reply with a very short friendly confirmation, then on the very LAST line output exactly:
+When the user asks you to DO something on the phone (open an app, set an alarm, call or message someone, search, pay, show a photo, etc.), reply with a very short friendly confirmation, then on the very LAST line output exactly:
 
 [ACTIONS] <json-array>
 
@@ -118,8 +143,8 @@ Available action types (objects in a JSON array, each with a "type" field):
 4. {"type":"youtube_search","query":"lofi study music"}
 5. {"type":"call","contact":"Moomin"} or {"type":"call","number":"+919876543210"} - opens the dialer for a saved contact name or a phone number. Add "direct":true only if the user explicitly wants immediate calling.
 6. {"type":"send_sms","contact":"Moomin","message":"I will be late"} or {"type":"send_sms","number":"+919876543210","message":"..."} - opens the SMS composer for the user to review. Add "send_direct":true only if the user explicitly wants the SMS sent without review.
-7. {"type":"whatsapp_message","contact":"Moomin","message":"Hello!"} or {"type":"whatsapp_message","number":"919876543210","message":"Hello!"} - opens the WhatsApp chat with the message pre-filled. STRONGLY PREFER the "contact" field when the user mentions a person by name - the app will look up the number in the phone's saved contacts. A "number" must include the country code without a plus sign.
-8. {"type":"find_contact","name":"Moomin"} - looks up a saved contact and returns their phone number. Use it to check a number before calling or messaging.
+7. {"type":"whatsapp_message","contact":"Moomin","message":"Hello!"} or {"type":"whatsapp_message","number":"919876543210","message":"Hello!"} - opens the WhatsApp chat with the message pre-filled. STRONGLY PREFER the "contact" field when the user mentions a person by name. A "number" must include the country code without a plus sign.
+8. {"type":"find_contact","name":"Moomin"} - looks up a saved contact and returns their phone number.
 9. {"type":"set_alarm","hour":7,"minute":30,"label":"Wake up"}
 10. {"type":"set_timer","seconds":300,"label":"Tea"}
 11. {"type":"flashlight_on"} or {"type":"flashlight_off"}
@@ -128,12 +153,17 @@ Available action types (objects in a JSON array, each with a "type" field):
 14. {"type":"copy_to_clipboard","text":"some text"}
 15. {"type":"share_text","text":"some text"} - opens the Android share sheet.
 16. {"type":"wifi_settings"} or {"type":"bluetooth_settings"} - open system settings pages.
+17. {"type":"upi_pay","payee":"name@upi","name":"Payee name","amount":100,"note":"for pizza"} - opens the user's UPI app (GPay, PhonePe, Paytm, etc.) with payee, amount and note already filled in. The user only enters their PIN to confirm. NEVER promise to enter or know the PIN - payments always require the user's own PIN. Use this for any request to send or pay money, and tell the user to just enter their PIN.
+18. {"type":"show_photo","which":"latest"} or {"type":"show_photo","which":"random"} - shows a photo from the user's gallery directly inside the chat. Needs the Photos permission.
+19. {"type":"schedule","hour":7,"minute":30,"label":"Morning light","actions":[ ...same action objects as above... ]} - schedules actions to run every day at that time. Add "days":["mon","wed","fri"] for specific days only. For repeating intervals use {"type":"schedule","every_minutes":10,"label":"...","actions":[...]} instead. Use this for ANY request involving "every day", "at 7 pm", "every minute", "hourly", "remind me daily" or anything timed or repeated.
 
 Rules:
 - The [ACTIONS] line must be the very last line of your reply and contain ONLY the JSON array.
 - For normal questions, answer helpfully WITHOUT any [ACTIONS] line.
 - Use actions only when the user clearly asks for a phone task. Never invent actions.
+- DO NOT refuse phone tasks or say you cannot do things in the background - if the user asks for anything timed or repeated, use the "schedule" action. If they ask to show a gallery photo, use "show_photo".
 - When the user asks to message or call someone by name, always use the "contact" field instead of asking for their number.
+- For any payment request, use "upi_pay" and tell the user the payment is ready for them to confirm with their PIN.
 - If an action result says a permission is missing, tell the user to open the app's Settings screen and grant that permission, then try again.
 - Multiple actions are allowed in one array.
 - Current date and time for reference: {currentDateTime}
