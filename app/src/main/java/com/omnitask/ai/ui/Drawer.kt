@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.HorizontalDivider
@@ -38,6 +39,7 @@ fun OmniDrawer(
     onNewChat: () -> Unit,
     onSelectAgent: (Agent) -> Unit,
     onManageAgents: () -> Unit,
+    onOpenSchedules: () -> Unit,
     onOpenConversation: (Conversation) -> Unit,
     onDeleteConversation: (Conversation) -> Unit,
     onOpenSettings: () -> Unit
@@ -83,6 +85,11 @@ fun OmniDrawer(
             headlineContent = { Text("Manage agents") },
             leadingContent = { Icon(Icons.Default.SmartToy, contentDescription = null) },
             modifier = Modifier.clickable(onClick = onManageAgents)
+        )
+        ListItem(
+            headlineContent = { Text("Scheduled tasks") },
+            leadingContent = { Icon(Icons.Default.Schedule, contentDescription = null) },
+            modifier = Modifier.clickable(onClick = onOpenSchedules)
         )
         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 

@@ -1,5 +1,10 @@
 package com.omnitask.ai.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
@@ -12,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import com.omnitask.ai.actions.ActionExecutor
 import com.omnitask.ai.actions.ActionParser
 import com.omnitask.ai.data.Agent
@@ -22,6 +28,7 @@ import com.omnitask.ai.data.Conversation
 import com.omnitask.ai.data.DEFAULT_AGENT_ID
 import com.omnitask.ai.data.Presets
 import com.omnitask.ai.data.Store
+import com.omnitask.ai.schedule.Scheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,14 +50,25 @@ fun AppRoot() {
     var busy by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
+    var schedules by remember { mutableStateOf(Store.loadSchedules(ctx)) }
 
-    // Restore the last open conversation
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    // Restore the last open conversation and ask for the notification permission
     LaunchedEffect(Unit) {
         val cid = activeConvId
         val conv = conversations.firstOrNull { it.id == cid }
         if (conv != null) {
             messages.addAll(conv.messages)
             activeAgentId = conv.agentId
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -217,6 +235,16 @@ fun AppRoot() {
             }
         )
 
+        "schedules" -> SchedulesScreen(
+            schedules = schedules,
+            onBack = { screen = "chat" },
+            onDelete = { s ->
+                Scheduler.cancel(ctx, s.id)
+                schedules = schedules.filterNot { it.id == s.id }
+                Store.saveSchedules(ctx, schedules)
+            }
+        )
+
         "agentEdit" -> AgentEditScreen(
             initial = editingAgent,
             onBack = { screen = "agents" },
@@ -258,6 +286,10 @@ fun AppRoot() {
                         },
                         onManageAgents = {
                             screen = "agents"
+                            scope.launch { drawerState.close() }
+                        },
+                        onOpenSchedules = {
+                            screen = "schedules"
                             scope.launch { drawerState.close() }
                         },
                         onOpenConversation = {
