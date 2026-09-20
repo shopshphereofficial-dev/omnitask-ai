@@ -5,6 +5,7 @@ import android.app.SearchManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -20,8 +21,13 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
+import com.omnitask.ai.data.Schedule
+import com.omnitask.ai.data.Store
+import com.omnitask.ai.schedule.Scheduler
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
+import kotlin.random.Random
 
 /**
  * Extracts the [ACTIONS] block that the AI appends to its reply.
@@ -62,7 +68,8 @@ object ActionParser {
 /**
  * Executes AI-requested actions on the phone using standard Android intents.
  * Sensitive permissions gracefully fall back to user-reviewable intents
- * (dialer / SMS composer) when they are not granted.
+ * (dialer / SMS composer) when they are not granted. Payments always open
+ * the user's UPI app with everything filled in - the user enters their PIN.
  */
 object ActionExecutor {
 
@@ -127,6 +134,9 @@ object ActionExecutor {
             "send_sms" -> sendSms(ctx, o)
             "whatsapp_message" -> whatsapp(ctx, o)
             "find_contact" -> findContact(ctx, o)
+            "upi_pay" -> upiPay(ctx, o)
+            "show_photo" -> showPhoto(ctx, o)
+            "schedule" -> scheduleTask(ctx, o)
             "set_alarm" -> setAlarm(ctx, o)
             "set_timer" -> setTimer(ctx, o)
             "flashlight_on" -> torch(ctx, true)
@@ -219,6 +229,118 @@ object ActionExecutor {
         val found = findContactNumber(ctx, name)
             ?: return "No contact found for \"$name\""
         return "Found: ${found.first} - ${found.second}"
+    }
+
+    // ---------- payments, photos, schedules ----------
+
+    /** Opens the user's UPI app with payee, amount and note filled in. The user confirms with their PIN. */
+    private fun upiPay(ctx: Context, o: JSONObject): String {
+        val payee = o.optString("payee").trim()
+        if (payee.isEmpty()) return "upi_pay failed: no payee UPI id given (like name@upi)"
+        val name = o.optString("name", "Payee").ifBlank { "Payee" }
+        val amount = o.optString("amount", "").trim()
+        val note = o.optString("note", "").trim()
+        var uriStr = "upi://pay?pa=" + Uri.encode(payee) + "&pn=" + Uri.encode(name) + "&cu=INR"
+        if (amount.isNotEmpty()) uriStr += "&am=" + Uri.encode(amount)
+        if (note.isNotEmpty()) uriStr += "&tn=" + Uri.encode(note)
+        val uri = Uri.parse(uriStr)
+        return try {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            "Payment ready in your UPI app - check the amount and enter your PIN to pay"
+        } catch (e: Exception) {
+            try {
+                val chooser = Intent.createChooser(Intent(Intent.ACTION_VIEW, uri), "Pay with")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(chooser)
+                "Payment ready - pick your UPI app and enter your PIN"
+            } catch (e2: Exception) {
+                "No UPI app found on this phone"
+            }
+        }
+    }
+
+    private fun showPhoto(ctx: Context, o: JSONObject): String {
+        if (!hasPhotoPermission(ctx)) {
+            return "Photo permission not granted - grant Photos access from the app's Settings screen and try again"
+        }
+        val which = o.optString("which", "latest").lowercase()
+        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        return try {
+            val uri: Uri? = if (which == "random") {
+                ctx.contentResolver.query(
+                    collection, arrayOf(MediaStore.Images.Media._ID), null, null, null
+                )?.use { c ->
+                    if (c.count > 0) {
+                        c.moveToPosition(Random.nextInt(c.count))
+                        ContentUris.withAppendedId(collection, c.getLong(0))
+                    } else null
+                }
+            } else {
+                ctx.contentResolver.query(
+                    collection, arrayOf(MediaStore.Images.Media._ID), null, null,
+                    MediaStore.Images.Media.DATE_ADDED + " DESC"
+                )?.use { c ->
+                    if (c.moveToFirst()) ContentUris.withAppendedId(collection, c.getLong(0)) else null
+                }
+            }
+            if (uri == null) "No photos found in the gallery" else "PHOTO:$uri"
+        } catch (e: SecurityException) {
+            "Photo permission not granted"
+        }
+    }
+
+    private fun hasPhotoPermission(ctx: Context): Boolean =
+        if (Build.VERSION.SDK_INT >= 33)
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_MEDIA_IMAGES) ==
+                PackageManager.PERMISSION_GRANTED
+        else
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_EXTERNAL_STORAGE) ==
+                PackageManager.PERMISSION_GRANTED
+
+    private fun scheduleTask(ctx: Context, o: JSONObject): String {
+        val actions = o.optJSONArray("actions")
+            ?: return "schedule failed: include an \"actions\" array with the tasks to run"
+        if (actions.length() == 0) return "schedule failed: the actions array is empty"
+        val label = o.optString("label", o.optString("task", "Scheduled task")).ifBlank { "Scheduled task" }
+        val every = o.optInt("every_minutes", 0)
+        val hour = o.optInt("hour", -1)
+        val minute = o.optInt("minute", 0)
+        val schedule: Schedule = if (every > 0) {
+            Schedule(id = UUID.randomUUID().toString(), label = label, intervalMinutes = every, actionsJson = actions.toString())
+        } else if (hour in 0..23) {
+            Schedule(
+                id = UUID.randomUUID().toString(),
+                label = label,
+                hour = hour,
+                minute = minute,
+                days = parseDays(o.optJSONArray("days")),
+                actionsJson = actions.toString()
+            )
+        } else {
+            return "schedule failed: give either hour/minute or every_minutes"
+        }
+        Store.saveSchedules(ctx, Store.loadSchedules(ctx) + schedule)
+        Scheduler.armNext(ctx, schedule)
+        return if (every > 0) {
+            "Scheduled: $label (every $every minutes)"
+        } else {
+            "Scheduled: " + label + " - " + schedule.describe()
+        }
+    }
+
+    private fun parseDays(arr: JSONArray?): List<Int>? {
+        if (arr == null || arr.length() == 0) return null
+        val map = mapOf(
+            "sun" to 1, "mon" to 2, "tue" to 3, "wed" to 4,
+            "thu" to 5, "fri" to 6, "sat" to 7,
+            "sunday" to 1, "monday" to 2, "tuesday" to 3, "wednesday" to 4,
+            "thursday" to 5, "friday" to 6, "saturday" to 7
+        )
+        val out = ArrayList<Int>()
+        for (i in 0 until arr.length()) {
+            map[arr.optString(i).lowercase().take(3)]?.let { out.add(it) }
+        }
+        return if (out.isEmpty()) null else out
     }
 
     // ---------- actions ----------

@@ -9,6 +9,7 @@ object Store {
     private const val KEY_CFG = "config"
     private const val KEY_AGENTS = "agents"
     private const val KEY_CONVS = "conversations"
+    private const val KEY_SCHEDS = "schedules"
     private const val KEY_ACTIVE_AGENT = "active_agent"
     private const val KEY_ACTIVE_CONV = "active_conv"
 
@@ -156,6 +157,53 @@ object Store {
                     title = o.optString("title", "New chat"),
                     messages = messages,
                     updatedAt = o.optLong("updatedAt", 0L)
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    // ---------- schedules ----------
+
+    fun saveSchedules(ctx: Context, schedules: List<Schedule>) {
+        val arr = JSONArray()
+        schedules.forEach { s ->
+            val o = JSONObject()
+                .put("id", s.id)
+                .put("label", s.label)
+                .put("minute", s.minute)
+                .put("actionsJson", s.actionsJson)
+                .put("agentId", s.agentId)
+            s.hour?.let { o.put("hour", it) }
+            s.intervalMinutes?.let { o.put("intervalMinutes", it) }
+            s.days?.let { days ->
+                val d = JSONArray()
+                days.forEach { d.put(it) }
+                o.put("days", d)
+            }
+            arr.put(o)
+        }
+        prefs(ctx).edit().putString(KEY_SCHEDS, arr.toString()).apply()
+    }
+
+    fun loadSchedules(ctx: Context): List<Schedule> {
+        val s = prefs(ctx).getString(KEY_SCHEDS, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(s)
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                Schedule(
+                    id = o.optString("id"),
+                    label = o.optString("label", "Scheduled task"),
+                    hour = if (o.isNull("hour")) null else o.optInt("hour", 0),
+                    minute = o.optInt("minute", 0),
+                    days = o.optJSONArray("days")?.let { d ->
+                        (0 until d.length()).map { k -> d.optInt(k) }
+                    },
+                    intervalMinutes = if (o.isNull("intervalMinutes")) null else o.optInt("intervalMinutes", 0),
+                    actionsJson = o.optString("actionsJson", "[]"),
+                    agentId = o.optString("agentId", DEFAULT_AGENT_ID)
                 )
             }
         } catch (e: Exception) {
