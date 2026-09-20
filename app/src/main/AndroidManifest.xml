@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Let the AI find contacts by name for calls, SMS and WhatsApp messages -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Optional: used only for direct SMS sending; the app falls back to the SMS composer if not granted -->
     <uses-permission android:name="android.permission.SEND_SMS" />
     <!-- Optional: used only for direct calling; the app falls back to the dialer if not granted -->
