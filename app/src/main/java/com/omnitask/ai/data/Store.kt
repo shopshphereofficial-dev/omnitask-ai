@@ -1,11 +1,16 @@
 package com.omnitask.ai.data
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 import org.json.JSONObject
 
 object Store {
     private const val PREFS = "omnitask_prefs"
+    private const val PREFS_SECURE = "omnitask_secure_prefs"
+    private const val KEY_MIGRATED = "__migrated_to_secure__"
     private const val KEY_CFG = "config"
     private const val KEY_AGENTS = "agents"
     private const val KEY_CONVS = "conversations"
@@ -13,7 +18,38 @@ object Store {
     private const val KEY_ACTIVE_AGENT = "active_agent"
     private const val KEY_ACTIVE_CONV = "active_conv"
 
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    /**
+     * Preferences backed by EncryptedSharedPreferences so API keys and the GitHub
+     * token are not stored in plain text. If encryption is unavailable on the
+     * device for any reason we fall back to normal preferences instead of crashing.
+     */
+    private fun prefs(ctx: Context): SharedPreferences {
+        val legacy = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return try {
+            val masterKey = MasterKey.Builder(ctx)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            val secure = EncryptedSharedPreferences.create(
+                ctx,
+                PREFS_SECURE,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            if (!secure.getBoolean(KEY_MIGRATED, false)) {
+                val editor = secure.edit()
+                for ((k, v) in legacy.all) {
+                    if (v is String) editor.putString(k, v)
+                    else if (v is Boolean) editor.putBoolean(k, v)
+                }
+                editor.putBoolean(KEY_MIGRATED, true)
+                editor.apply()
+            }
+            secure
+        } catch (e: Exception) {
+            legacy
+        }
+    }
 
     // ---------- config ----------
 
@@ -24,6 +60,9 @@ object Store {
             .put("model", cfg.model)
             .put("apiKey", cfg.apiKey)
             .put("autoExecute", cfg.autoExecute)
+            .put("githubToken", cfg.githubToken)
+            .put("githubOwner", cfg.githubOwner)
+            .put("githubRepo", cfg.githubRepo)
         prefs(ctx).edit().putString(KEY_CFG, o.toString()).apply()
     }
 
@@ -31,12 +70,16 @@ object Store {
         val s = prefs(ctx).getString(KEY_CFG, null) ?: return AppConfig()
         return try {
             val o = JSONObject(s)
+            val d = AppConfig()
             AppConfig(
-                providerId = o.optString("providerId", "openai"),
-                baseUrl = o.optString("baseUrl", ""),
-                model = o.optString("model", ""),
+                providerId = o.optString("providerId", d.providerId),
+                baseUrl = o.optString("baseUrl", d.baseUrl),
+                model = o.optString("model", d.model),
                 apiKey = o.optString("apiKey", ""),
-                autoExecute = o.optBoolean("autoExecute", true)
+                autoExecute = o.optBoolean("autoExecute", true),
+                githubToken = o.optString("githubToken", ""),
+                githubOwner = o.optString("githubOwner", ""),
+                githubRepo = o.optString("githubRepo", "")
             )
         } catch (e: Exception) {
             AppConfig()

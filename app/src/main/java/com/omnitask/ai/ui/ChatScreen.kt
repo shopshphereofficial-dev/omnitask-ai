@@ -5,7 +5,9 @@ import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,11 +24,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -55,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.omnitask.ai.data.Agent
 import com.omnitask.ai.data.ChatMessage
+import com.omnitask.ai.data.Presets
+import com.omnitask.ai.data.ProviderPreset
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,9 +75,11 @@ fun ChatScreen(
     onSend: (String) -> Unit,
     onRunActions: (ChatMessage) -> Unit,
     onOpenDrawer: () -> Unit,
-    onNewChat: () -> Unit
+    onNewChat: () -> Unit,
+    onQuickProvider: (ProviderPreset) -> Unit
 ) {
     var input by remember { mutableStateOf("") }
+    var providerMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val ctx = LocalContext.current
 
@@ -102,13 +111,39 @@ fun ChatScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            "$providerLabel • $model",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Box {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { providerMenu = true }
+                            ) {
+                                Text(
+                                    "$providerLabel • $model",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Switch model",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = providerMenu,
+                                onDismissRequest = { providerMenu = false }
+                            ) {
+                                Presets.ALL.forEach { p ->
+                                    DropdownMenuItem(
+                                        text = { Text(p.name) },
+                                        onClick = {
+                                            providerMenu = false
+                                            onQuickProvider(p)
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 },
                 actions = {

@@ -24,50 +24,80 @@ data class ProviderPreset(
     val name: String,
     val baseUrl: String,
     val defaultModel: String,
-    val keyUrl: String
+    val keyUrl: String,
+    val models: List<String> = emptyList()
 )
 
 object Presets {
     val ALL = listOf(
         ProviderPreset(
+            "gemini", "Google Gemini",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            "gemini-3.8-flash",
+            "https://aistudio.google.com/apikey",
+            listOf(
+                "gemini-3.8-flash",
+                "gemini-3.7-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite",
+                "gemini-3.1-pro-preview",
+                "gemini-3-flash-preview",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite"
+            )
+        ),
+        ProviderPreset(
             "openai", "OpenAI",
-            "https://api.openai.com/v1", "gpt-4o-mini",
-            "https://platform.openai.com/api-keys"
+            "https://api.openai.com/v1", "gpt-5.6-luna",
+            "https://platform.openai.com/api-keys",
+            listOf(
+                "gpt-6-astra",
+                "gpt-6.1-sol",
+                "gpt-6-luna",
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+                "gpt-5.6-luna",
+                "gpt-5.4-mini",
+                "gpt-5-mini",
+                "gpt-4.1",
+                "gpt-4o-mini"
+            )
         ),
         ProviderPreset(
             "grok", "Grok (xAI)",
             "https://api.x.ai/v1", "grok-3-latest",
-            "https://console.x.ai"
-        ),
-        ProviderPreset(
-            "gemini", "Google Gemini",
-            "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.8-flash",
-            "https://aistudio.google.com/apikey"
+            "https://console.x.ai",
+            listOf("grok-3-latest", "grok-3-mini", "grok-2-latest")
         ),
         ProviderPreset(
             "deepseek", "DeepSeek",
             "https://api.deepseek.com/v1", "deepseek-chat",
-            "https://platform.deepseek.com"
+            "https://platform.deepseek.com",
+            listOf("deepseek-chat", "deepseek-reasoner")
         ),
         ProviderPreset(
             "kimi", "Kimi (Moonshot AI)",
             "https://api.moonshot.ai/v1", "moonshot-v1-8k",
-            "https://platform.moonshot.ai"
+            "https://platform.moonshot.ai",
+            listOf("moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k")
         ),
         ProviderPreset(
             "sarvam", "Sarvam AI",
             "https://api.sarvam.ai/v1", "sarvam-m",
-            "https://dashboard.sarvam.ai"
+            "https://dashboard.sarvam.ai",
+            listOf("sarvam-m")
         ),
         ProviderPreset(
             "ollama", "Ollama (free, local)",
             "http://localhost:11434/v1", "llama3.2",
-            "https://ollama.com"
+            "https://ollama.com",
+            listOf("llama3.2", "qwen2.5", "mistral")
         ),
         ProviderPreset(
             "custom", "Custom (any OpenAI-compatible API)",
-            "", "",
-            ""
+            "", "", "", emptyList()
         )
     )
 
@@ -76,11 +106,14 @@ object Presets {
 }
 
 data class AppConfig(
-    val providerId: String = "openai",
-    val baseUrl: String = "https://api.openai.com/v1",
-    val model: String = "gpt-4o-mini",
+    val providerId: String = "gemini",
+    val baseUrl: String = "https://generativelanguage.googleapis.com/v1beta/openai",
+    val model: String = "gemini-3.8-flash",
     val apiKey: String = "",
-    val autoExecute: Boolean = true
+    val autoExecute: Boolean = true,
+    val githubToken: String = "",
+    val githubOwner: String = "",
+    val githubRepo: String = ""
 )
 
 /** An agent is a dedicated assistant with its own name, personality and optionally its own provider. */
@@ -173,6 +206,13 @@ Available action types (objects in a JSON array, each with a "type" field):
 34. {"type":"spotify_search","query":"song name"} - searches Spotify.
 35. {"type":"wifi_panel"} or {"type":"bluetooth_panel"} - opens the quick Wi-Fi or Bluetooth toggle panel.
 36. {"type":"unschedule_all"} - deletes ALL scheduled tasks.
+37. {"type":"github_status"} - checks the saved GitHub connection and returns the account name.
+38. {"type":"github_list_repos"} - lists the user's GitHub repositories.
+39. {"type":"github_create_repo","name":"my-app","private":true,"description":"short description"} - creates a new GitHub repository.
+40. {"type":"github_push_file","repo":"my-app","path":"index.html","content":"<full file text>","message":"Add page"} - creates or updates a file in a repository. "repo" can be just the name or "owner/name".
+41. {"type":"github_get_file","repo":"my-app","path":"README.md"} - reads a file back from a repository.
+42. {"type":"github_build","repo":"my-app"} - starts the repository's GitHub Actions build (the workflow that makes an APK) and returns a link.
+43. {"type":"github_build_status","repo":"my-app"} - returns the latest build result and, when a release exists, the APK download link.
 
 Rules:
 - The [ACTIONS] line must be the very last line of your reply and contain ONLY the JSON array.
@@ -184,6 +224,8 @@ Rules:
 - When the user asks to message or call someone by name, always use the "contact" field instead of asking for their number.
 - For any payment request, use "upi_pay" and tell the user the payment is ready for them to confirm with their PIN.
 - If an action result says a permission is missing, tell the user to open the app's Settings screen and grant that permission, then try again. Brightness and screen timeout may need the "Modify system settings" special access from that same screen.
+- For GitHub work (creating repositories, pushing code, building apps or websites) use the github_* actions. The user must first add a GitHub token in the app's Settings screen; if the result says the token is missing, tell them to open Settings > GitHub and paste a token.
+- You can write whole websites (HTML/CSS/JS) and push them to GitHub with github_push_file, one file at a time. For Android apps, push the project files and then use github_build to run the repository's build workflow.
 - Multiple actions are allowed in one array.
 - Current date and time for reference: {currentDateTime}
 """

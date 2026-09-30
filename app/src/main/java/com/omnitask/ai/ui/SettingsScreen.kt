@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.omnitask.ai.data.AiClient
 import com.omnitask.ai.data.AppConfig
 import com.omnitask.ai.data.ChatMessage
+import com.omnitask.ai.data.GithubClient
 import com.omnitask.ai.data.Presets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,6 +80,11 @@ fun SettingsScreen(
     var showKey by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
+    var githubToken by remember { mutableStateOf(current.githubToken) }
+    var githubOwner by remember { mutableStateOf(current.githubOwner) }
+    var githubRepo by remember { mutableStateOf(current.githubRepo) }
+    var ghTesting by remember { mutableStateOf(false) }
+    var ghResult by remember { mutableStateOf<String?>(null) }
 
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -91,7 +99,10 @@ fun SettingsScreen(
         baseUrl = baseUrl,
         model = model,
         apiKey = apiKey,
-        autoExecute = autoExecute
+        autoExecute = autoExecute,
+        githubToken = githubToken,
+        githubOwner = githubOwner,
+        githubRepo = githubRepo
     )
 
     val photoPerm = if (Build.VERSION.SDK_INT >= 33)
@@ -213,6 +224,23 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            val modelSuggestions = Presets.byId(providerId)?.models ?: emptyList()
+            if (modelSuggestions.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    modelSuggestions.forEach { m ->
+                        AssistChip(
+                            onClick = { model = m },
+                            label = { Text(m, fontSize = 12.sp) }
+                        )
+                    }
+                }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Auto-execute actions")
@@ -329,6 +357,71 @@ fun SettingsScreen(
             testResult?.let {
                 Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+
+            HorizontalDivider()
+
+            Text("GitHub", fontWeight = FontWeight.Bold)
+            Text(
+                "Connect GitHub so the assistant can create repositories, push code and start builds. " +
+                    "Create a token at github.com/settings/tokens with the repo and workflow scopes.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = githubToken,
+                onValueChange = { githubToken = it },
+                label = { Text("GitHub token") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = githubOwner,
+                onValueChange = { githubOwner = it },
+                label = { Text("GitHub username / owner") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = githubRepo,
+                onValueChange = { githubRepo = it },
+                label = { Text("Default repository") },
+                supportingText = { Text("Used when an action does not name a repo") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = {
+                        ghTesting = true
+                        ghResult = null
+                        scope.launch {
+                            try {
+                                val login = withContext(Dispatchers.IO) {
+                                    GithubClient.login(githubToken)
+                                }
+                                ghResult = "Connected as $login"
+                            } catch (e: Exception) {
+                                ghResult = "Failed: ${e.message}"
+                            } finally {
+                                ghTesting = false
+                            }
+                        }
+                    },
+                    enabled = !ghTesting && githubToken.isNotBlank()
+                ) {
+                    if (ghTesting) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Test GitHub")
+                    }
+                }
+            }
+            ghResult?.let {
+                Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            HorizontalDivider()
 
             Button(
                 onClick = { onSave(buildConfig()) },

@@ -27,6 +27,7 @@ import com.omnitask.ai.data.ChatMessage
 import com.omnitask.ai.data.Conversation
 import com.omnitask.ai.data.DEFAULT_AGENT_ID
 import com.omnitask.ai.data.Presets
+import com.omnitask.ai.data.ProviderPreset
 import com.omnitask.ai.data.Store
 import com.omnitask.ai.schedule.Scheduler
 import kotlinx.coroutines.Dispatchers
@@ -111,6 +112,22 @@ fun AppRoot() {
         activeAgentId = a.id
         Store.setActiveAgentId(ctx, a.id)
         newChat()
+    }
+
+    fun quickSwitchProvider(p: ProviderPreset) {
+        val newCfg = config.copy(
+            providerId = p.id,
+            baseUrl = if (p.baseUrl.isNotBlank()) p.baseUrl else config.baseUrl,
+            model = if (p.defaultModel.isNotBlank()) p.defaultModel else config.model
+        )
+        config = newCfg
+        Store.saveConfig(ctx, newCfg)
+        val a = agents.firstOrNull { it.id == activeAgentId }
+        if (a != null && a.providerId.isNotBlank()) {
+            val na = a.copy(providerId = p.id, baseUrl = p.baseUrl, model = p.defaultModel)
+            agents = agents.map { if (it.id == na.id) na else it }
+            Store.saveAgents(ctx, agents)
+        }
     }
 
     fun openConversation(c: Conversation) {
@@ -265,6 +282,12 @@ fun AppRoot() {
             }
         )
 
+        "github" -> GithubScreen(
+            config = config,
+            onBack = { screen = "chat" },
+            onOpenSettings = { screen = "settings" }
+        )
+
         else -> {
             val agentOverride = activeAgent.providerId.isNotBlank()
             val providerName = Presets.nameOf(if (agentOverride) activeAgent.providerId else config.providerId)
@@ -300,6 +323,10 @@ fun AppRoot() {
                         onOpenSettings = {
                             screen = "settings"
                             scope.launch { drawerState.close() }
+                        },
+                        onOpenGithub = {
+                            screen = "github"
+                            scope.launch { drawerState.close() }
                         }
                     )
                 }
@@ -314,7 +341,8 @@ fun AppRoot() {
                     onSend = { sendMessage(it) },
                     onRunActions = { runActions(it) },
                     onOpenDrawer = { scope.launch { drawerState.open() } },
-                    onNewChat = { newChat() }
+                    onNewChat = { newChat() },
+                    onQuickProvider = { p -> quickSwitchProvider(p) }
                 )
             }
         }

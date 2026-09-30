@@ -32,6 +32,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
+import com.omnitask.ai.data.GithubClient
 import com.omnitask.ai.data.Schedule
 import com.omnitask.ai.data.Store
 import com.omnitask.ai.schedule.Scheduler
@@ -182,6 +183,13 @@ object ActionExecutor {
                 Store.saveSchedules(ctx, emptyList())
                 "All scheduled tasks cleared"
             }
+            "github_status" -> githubStatus(ctx)
+            "github_list_repos" -> githubListRepos(ctx)
+            "github_create_repo" -> githubCreateRepo(ctx, o)
+            "github_push_file" -> githubPushFile(ctx, o)
+            "github_get_file" -> githubGetFile(ctx, o)
+            "github_build" -> githubBuild(ctx, o)
+            "github_build_status" -> githubBuildStatus(ctx, o)
             "set_alarm" -> setAlarm(ctx, o)
             "set_timer" -> setTimer(ctx, o)
             "flashlight_on" -> torch(ctx, true)
@@ -926,5 +934,104 @@ object ActionExecutor {
         var u = url.trim()
         if (u.isNotEmpty() && !u.startsWith("http")) u = "https://$u"
         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    // ---------- GitHub ----------
+
+    private fun ghRepo(ctx: Context, o: JSONObject): String {
+        val cfg = Store.loadConfig(ctx)
+        var r = o.optString("repo").trim()
+        if (r.isEmpty()) r = cfg.githubRepo.trim()
+        if (r.isEmpty()) return ""
+        return if (r.contains("/")) r else (cfg.githubOwner.trim() + "/" + r)
+    }
+
+    private fun githubStatus(ctx: Context): String {
+        val cfg = Store.loadConfig(ctx)
+        if (cfg.githubToken.isBlank()) {
+            return "No GitHub token set - open Settings > GitHub and paste a personal access token, then try again"
+        }
+        return try {
+            "Connected to GitHub as " + GithubClient.login(cfg.githubToken)
+        } catch (e: Exception) {
+            "github_status failed: " + (e.message ?: "unknown error")
+        }
+    }
+
+    private fun githubListRepos(ctx: Context): String {
+        val cfg = Store.loadConfig(ctx)
+        return try {
+            val repos = GithubClient.listRepos(cfg.githubToken)
+            if (repos.isEmpty()) "No repositories found on this account"
+            else "Repositories (" + repos.size + "): " + repos.take(50).joinToString(", ")
+        } catch (e: Exception) {
+            "github_list_repos failed: " + (e.message ?: "unknown error")
+        }
+    }
+
+    private fun githubCreateRepo(ctx: Context, o: JSONObject): String {
+        val cfg = Store.loadConfig(ctx)
+        val name = o.optString("name").trim()
+        if (name.isEmpty()) return "github_create_repo failed: no repository name given"
+        val privateRepo = o.optBoolean("private", false)
+        val desc = o.optString("description", "")
+        return try {
+            "Created repository " + GithubClient.createRepo(cfg.githubToken, name, privateRepo, desc)
+        } catch (e: Exception) {
+            "github_create_repo failed: " + (e.message ?: "unknown error")
+        }
+    }
+
+    private fun githubPushFile(ctx: Context, o: JSONObject): String {
+        val cfg = Store.loadConfig(ctx)
+        val repo = ghRepo(ctx, o)
+        if (repo.isEmpty()) return "github_push_file failed: no repository given - set a default repo in Settings > GitHub or pass \"repo\""
+        val path = o.optString("path").trim()
+        if (path.isEmpty()) return "github_push_file failed: no file path given"
+        val content = o.optString("content")
+        val message = o.optString("message", "Update " + path)
+        return try {
+            GithubClient.putFile(cfg.githubToken, repo, path, content, message)
+        } catch (e: Exception) {
+            "github_push_file failed: " + (e.message ?: "unknown error")
+        }
+    }
+
+    private fun githubGetFile(ctx: Context, o: JSONObject): String {
+        val cfg = Store.loadConfig(ctx)
+        val repo = ghRepo(ctx, o)
+        if (repo.isEmpty()) return "github_get_file failed: no repository given"
+        val path = o.optString("path").trim()
+        if (path.isEmpty()) return "github_get_file failed: no file path given"
+        return try {
+            "File " + path + ":\n" + GithubClient.getFile(cfg.githubToken, repo, path).take(4000)
+        } catch (e: Exception) {
+            "github_get_file failed: " + (e.message ?: "unknown error")
+        }
+    }
+
+    private fun githubBuild(ctx: Context, o: JSONObject): String {
+        val cfg = Store.loadConfig(ctx)
+        val repo = ghRepo(ctx, o)
+        if (repo.isEmpty()) return "github_build failed: no repository given"
+        return try {
+            GithubClient.dispatchBuild(cfg.githubToken, repo)
+        } catch (e: Exception) {
+            "github_build failed: " + (e.message ?: "unknown error")
+        }
+    }
+
+    private fun githubBuildStatus(ctx: Context, o: JSONObject): String {
+        val cfg = Store.loadConfig(ctx)
+        val repo = ghRepo(ctx, o)
+        if (repo.isEmpty()) return "github_build_status failed: no repository given"
+        return try {
+            var msg = GithubClient.latestRunStatus(cfg.githubToken, repo)
+            val apk = GithubClient.latestApkUrl(cfg.githubToken, repo)
+            if (apk != null) msg += " - APK: " + apk
+            msg
+        } catch (e: Exception) {
+            "github_build_status failed: " + (e.message ?: "unknown error")
+        }
     }
 }

@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
@@ -40,6 +41,7 @@ fun OmniDrawer(
     onSelectAgent: (Agent) -> Unit,
     onManageAgents: () -> Unit,
     onOpenSchedules: () -> Unit,
+    onOpenGithub: () -> Unit,
     onOpenConversation: (Conversation) -> Unit,
     onDeleteConversation: (Conversation) -> Unit,
     onOpenSettings: () -> Unit
@@ -90,6 +92,11 @@ fun OmniDrawer(
             headlineContent = { Text("Scheduled tasks") },
             leadingContent = { Icon(Icons.Default.Schedule, contentDescription = null) },
             modifier = Modifier.clickable(onClick = onOpenSchedules)
+        )
+        ListItem(
+            headlineContent = { Text("GitHub") },
+            leadingContent = { Icon(Icons.Default.Code, contentDescription = null) },
+            modifier = Modifier.clickable(onClick = onOpenGithub)
         )
         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
