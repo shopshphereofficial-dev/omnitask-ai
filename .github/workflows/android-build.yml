@@ -47,8 +47,28 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk OmniTask-AI.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: OmniTask-AI-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: OmniTask-AI.apk
+
+      - name: Publish APK as a Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4.0
+          name: OmniTask AI v4.0
+          body: |
+            Download **OmniTask-AI.apk** below and install it on your phone.
+
+            New in v4.0:
+            - GitHub integration - create repositories, push files and start builds from the chat
+            - Switch the AI provider/model right from the chat header
+            - Up-to-date model list (Gemini 3.8 Flash, GPT-5.6, DeepSeek and more)
+            - API keys and the GitHub token are now stored encrypted
+            - The build workflow itself is fixed, so every push produces a fresh APK
+          files: OmniTask-AI.apk
+          make_latest: true
