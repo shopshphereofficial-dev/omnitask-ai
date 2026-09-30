@@ -28,9 +28,9 @@ object Store {
         return try {
             val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
             val secure = EncryptedSharedPreferences.create(
-                ctx,
                 PREFS_SECURE,
                 masterKeyAlias,
+                ctx,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
