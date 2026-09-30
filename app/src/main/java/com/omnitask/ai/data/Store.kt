@@ -3,7 +3,7 @@ package com.omnitask.ai.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.security.crypto.MasterKeys
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -26,13 +26,11 @@ object Store {
     private fun prefs(ctx: Context): SharedPreferences {
         val legacy = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return try {
-            val masterKey = MasterKey.Builder(ctx)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
+            val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
             val secure = EncryptedSharedPreferences.create(
                 ctx,
                 PREFS_SECURE,
-                masterKey,
+                masterKeyAlias,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
