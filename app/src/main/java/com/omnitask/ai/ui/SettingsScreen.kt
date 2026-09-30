@@ -1,5 +1,7 @@
 package com.omnitask.ai.ui
 
+import android.content.Intent
+import android.net.Uri
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -375,6 +377,20 @@ fun SettingsScreen(
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth()
             )
+            OutlinedButton(
+                onClick = {
+                    try {
+                        ctx.startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse("https://github.com/settings/tokens/new?scopes=repo,workflow&description=OmniTask%20AI")
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (e: Exception) {
+                        // no browser available
+                    }
+                }
+            ) { Text("Get a GitHub token") }
             OutlinedTextField(
                 value = githubOwner,
                 onValueChange = { githubOwner = it },
@@ -400,7 +416,8 @@ fun SettingsScreen(
                                 val login = withContext(Dispatchers.IO) {
                                     GithubClient.login(githubToken)
                                 }
-                                ghResult = "Connected as $login"
+                                if (githubOwner.isBlank()) githubOwner = login
+                                ghResult = "Connected as $login - username filled in below"
                             } catch (e: Exception) {
                                 ghResult = "Failed: ${e.message}"
                             } finally {
