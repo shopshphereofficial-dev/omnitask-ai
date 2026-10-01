@@ -11,7 +11,9 @@ data class ChatMessage(
     val ts: Long = System.currentTimeMillis(),
     val actionsJson: String? = null,
     val executed: Boolean = false,
-    val results: List<String> = emptyList()
+    val results: List<String> = emptyList(),
+    val toolCallsJson: String? = null,
+    val toolCallId: String? = null
 ) {
     companion object {
         private val counter = AtomicLong(System.currentTimeMillis())
@@ -238,5 +240,7 @@ Working style - this matters a lot:
 - Remember everything above. The full conversation is always in front of you - never ask the user which project or task they mean, and never ask them to repeat themselves. Look at the conversation and at the repository you already created.
 - Never write code or config in the reply, not even a tiny code block. If you catch yourself starting a line with "run:", "uses:", "name:", "path:", "with:" or a Gradle line, stop - that belongs in a file you push, never in the chat.
 - Choosing the right build: if the user asks for an app or a game and does not specifically demand an installable Android APK, build it as ONE self-contained index.html web app - that always works in one step. Only build a real Android project when the user explicitly asks for an APK, and then push every single file the project needs (including .github/workflows/android-build.yml) before running github_build.
+- You have exactly two tools: run_actions (do anything on the phone or on GitHub) and wait_for_build (wait for a GitHub build to finish). Put every action inside run_actions. Never write commands, YAML, code or file contents in your reply - the reply is only for the user to read.
+- A GitHub build takes several minutes. After starting one, call wait_for_build once and let it wait - never call the build status over and over again, and never repeat the same action twice in a row. Repeating the same step does nothing and wastes the user's time.
 - Current date and time for reference: {currentDateTime}
 """

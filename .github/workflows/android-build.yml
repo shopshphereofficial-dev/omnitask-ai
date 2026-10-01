@@ -67,16 +67,16 @@ jobs:
       - name: Publish APK as a Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v4.3
-          name: OmniTask AI v4.3
+          tag_name: v4.4
+          name: OmniTask AI v4.4
           body: |
             Download **OmniTask-AI.apk** below and install it on your phone.
 
-            New in v4.3:
-            - It now remembers the whole conversation - it will never again ask "which project?"
-            - Code and config can no longer appear in the chat, even by accident
-            - A stop button while it works, and it keeps going for longer before pausing
-            - Cleaner top bar and agent list (no robot emoji), new OmniTask name
-            - Everything from v4.2: keeps working until the task is done, spinning logo, neon theme
+            New in v4.4 - the big reliability fix:
+            - Real tool calling instead of parsing text, so it works like a proper agent
+            - It no longer gets stuck repeating the same step (that was the looping bug)
+            - One "wait for build" step instead of spamming the build status
+            - A guard that stops the loop if it ever repeats itself, plus a stop button
+            - Everything from v4.3: full conversation memory, no code in chat, neon logo and theme
           files: OmniTask-AI.apk
           make_latest: true

@@ -32,9 +32,11 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
+import com.omnitask.ai.data.AppConfig
 import com.omnitask.ai.data.GithubClient
 import com.omnitask.ai.data.Schedule
 import com.omnitask.ai.data.Store
+import com.omnitask.ai.data.ToolCall
 import com.omnitask.ai.schedule.Scheduler
 import org.json.JSONArray
 import org.json.JSONObject
@@ -96,6 +98,39 @@ object ActionParser {
             i = end + 3
         }
         return sb.toString().replace(Regex("\\n{3,}"), "\n\n").trim()
+    }
+
+    /** Pulls the actions array out of a run_actions tool call. */
+    fun actionsFromArgs(args: String): JSONArray? {
+        return try {
+            JSONObject(args).optJSONArray("actions")
+        } catch (e: Exception) {
+            fromJson(args)
+        }
+    }
+
+    /** The repository named in a wait_for_build call, or an empty string. */
+    fun repoFromArgs(args: String): String = try {
+        JSONObject(args).optString("repo")
+    } catch (e: Exception) {
+        ""
+    }
+
+    /** Serialises tool calls back into the shape the API expects on the next request. */
+    fun toolCallsJson(calls: List<ToolCall>): String {
+        val arr = JSONArray()
+        calls.forEach { c ->
+            arr.put(
+                JSONObject()
+                    .put("id", c.id)
+                    .put("type", "function")
+                    .put(
+                        "function",
+                        JSONObject().put("name", c.name).put("arguments", c.arguments)
+                    )
+            )
+        }
+        return arr.toString()
     }
 }
 
@@ -1054,5 +1089,48 @@ object ActionExecutor {
         } catch (e: Exception) {
             "github_build_status failed: " + (e.message ?: "unknown error")
         }
+    }
+
+    /** Repository name from a tool argument, falling back to the saved default. */
+    private fun repoName(cfg: AppConfig, arg: String): String {
+        var r = arg.trim()
+        if (r.isEmpty()) r = cfg.githubRepo.trim()
+        if (r.isEmpty()) return ""
+        return if (r.contains("/")) r else (cfg.githubOwner.trim() + "/" + r)
+    }
+
+    /**
+     * Waits for the newest build of a repository to finish (up to about four and a
+     * half minutes) and reports the outcome plus the APK link. This exists so the
+     * assistant can wait in one step instead of polling the build status over and over.
+     */
+    fun waitForBuild(ctx: Context, repoArg: String): String {
+        val cfg = Store.loadConfig(ctx)
+        val repo = repoName(cfg, repoArg)
+        if (repo.isEmpty()) return "wait_for_build failed: no repository given"
+        var last = "unknown"
+        for (i in 0 until 18) {
+            try {
+                Thread.sleep(15000)
+            } catch (e: InterruptedException) {
+                return "wait_for_build stopped"
+            }
+            val state = try {
+                GithubClient.latestRunState(cfg.githubToken, repo)
+            } catch (e: Exception) {
+                return "wait_for_build failed: " + (e.message ?: "unknown error")
+            }
+            last = state
+            if (state.startsWith("done:")) {
+                val apk = try {
+                    GithubClient.latestApkUrl(cfg.githubToken, repo)
+                } catch (e: Exception) {
+                    null
+                }
+                val verdict = state.removePrefix("done:")
+                return "Build " + verdict + " for " + repo + (if (apk != null) " - APK: " + apk else "")
+            }
+        }
+        return "Build is still running for " + repo + " after about four minutes (last state: " + last + ")"
     }
 }

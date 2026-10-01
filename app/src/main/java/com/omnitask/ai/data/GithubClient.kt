@@ -129,6 +129,16 @@ object GithubClient {
         return "Build started on " + repo.trim() + " - open the Actions tab in a minute to watch it"
     }
 
+    /** Machine-readable state: "none", "queued", "in_progress", "done:success", "done:failure". */
+    fun latestRunState(token: String, repo: String): String {
+        val arr = JSONObject(call(token, "/repos/" + repo.trim() + "/actions/runs?per_page=1"))
+            .optJSONArray("workflow_runs") ?: JSONArray()
+        if (arr.length() == 0) return "none"
+        val r = arr.getJSONObject(0)
+        val status = r.optString("status")
+        return if (status == "completed") "done:" + r.optString("conclusion") else status
+    }
+
     /** Human-readable status of the most recent workflow run. */
     fun latestRunStatus(token: String, repo: String): String {
         val arr = JSONObject(call(token, "/repos/" + repo.trim() + "/actions/runs?per_page=1"))

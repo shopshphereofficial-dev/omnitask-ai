@@ -29,6 +29,7 @@ import com.omnitask.ai.data.DEFAULT_AGENT_ID
 import com.omnitask.ai.data.Presets
 import com.omnitask.ai.data.ProviderPreset
 import com.omnitask.ai.data.Store
+import com.omnitask.ai.data.ToolCall
 import com.omnitask.ai.schedule.Scheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -148,6 +149,25 @@ fun AppRoot() {
         if (activeConvId == c.id) newChat()
     }
 
+    fun toolNote(results: List<String>): String =
+        "[ACTION RESULTS]\n" + results.joinToString("\n") +
+            "\n\nContinue the task now. If everything the user asked for is finished, reply with one short line and no tool call. If a step failed, fix it yourself and try again."
+
+    fun runTool(liveCfg: AppConfig, c: ToolCall): String {
+        return when (c.name) {
+            "run_actions" -> {
+                val arr = ActionParser.actionsFromArgs(c.arguments)
+                if (arr == null || arr.length() == 0) {
+                    "run_actions: no actions were given"
+                } else {
+                    ActionExecutor.executeAll(ctx, arr).joinToString("\n")
+                }
+            }
+            "wait_for_build" -> ActionExecutor.waitForBuild(ctx, ActionParser.repoFromArgs(c.arguments))
+            else -> "Unknown tool: " + c.name
+        }
+    }
+
     fun sendMessage(text: String) {
         val t = text.trim()
         if (t.isEmpty() || busy) return
@@ -173,66 +193,137 @@ fun AppRoot() {
                 }
             }
             if (history.isEmpty()) history.add(ChatMessage(role = "user", content = t))
+
+            var useTools = true
             try {
                 var step = 0
-                val maxSteps = 20
+                val maxSteps = 24
                 var didWork = false
                 var nudged = false
+                var lastSig = ""
+                var repeats = 0
+
                 while (step < maxSteps) {
                     step++
                     val live = agents.firstOrNull { it.id == activeAgentId } ?: agent
                     val liveCfg = effectiveCfg(live)
-                    val reply = withContext(Dispatchers.IO) {
-                        AiClient.chatBlocking(liveCfg, prompt, history)
-                    }
-                    val actions = ActionParser.parse(reply)
-                    val clean = ActionParser.stripCodeFences(ActionParser.strip(reply))
-                        .ifBlank { "Working on it…" }
-                    history.add(ChatMessage(role = "assistant", content = clean))
 
-                    if (actions == null || actions.length() == 0) {
-                        if (didWork && !nudged) {
-                            // It stopped right after doing work - make sure it really finished.
-                            nudged = true
+                    val result = try {
+                        withContext(Dispatchers.IO) { AiClient.chat(liveCfg, prompt, history, useTools) }
+                    } catch (e: Exception) {
+                        if (useTools) {
+                            // The provider may not accept tools - fall back to the plain text protocol.
+                            useTools = false
+                            withContext(Dispatchers.IO) { AiClient.chat(liveCfg, prompt, history, false) }
+                        } else {
+                            throw e
+                        }
+                    }
+
+                    val calls = result.toolCalls
+                    val clean = ActionParser.stripCodeFences(ActionParser.strip(result.content))
+                        .ifBlank { "Working on it…" }
+
+                    if (calls.isEmpty()) {
+                        val textActions = ActionParser.parse(result.content)
+                        if (textActions == null || textActions.length() == 0) {
+                            if (didWork && !nudged) {
+                                nudged = true
+                                messages.add(ChatMessage(role = "assistant", content = clean))
+                                history.add(
+                                    ChatMessage(
+                                        role = "user",
+                                        content = "Double-check before you finish: is everything the user asked for really done and verified? " +
+                                            "If anything is still missing, do it now. If it is all done, reply with one short line and no tool call."
+                                    )
+                                )
+                                continue
+                            }
                             messages.add(ChatMessage(role = "assistant", content = clean))
-                            history.add(
+                            break
+                        }
+                        if (!liveCfg.autoExecute) {
+                            messages.add(
                                 ChatMessage(
-                                    role = "user",
-                                    content = "Double-check before you finish: is everything the user asked for really done and verified? " +
-                                        "If anything is still missing, do it now. If it is all done, reply with one short line and no [ACTIONS] block."
+                                    role = "assistant",
+                                    content = clean,
+                                    actionsJson = textActions.toString()
                                 )
                             )
-                            continue
+                            break
                         }
-                        messages.add(ChatMessage(role = "assistant", content = clean))
-                        break
-                    }
-                    if (!liveCfg.autoExecute) {
+                        val sig = textActions.toString()
+                        repeats = if (sig == lastSig) repeats + 1 else 0
+                        lastSig = sig
+                        if (repeats >= 2) {
+                            messages.add(
+                                ChatMessage(
+                                    role = "assistant",
+                                    content = "I stopped because the same step kept repeating without making progress."
+                                )
+                            )
+                            break
+                        }
+                        status = if (step == 1) "Running actions…" else "Step $step…"
+                        val results = withContext(Dispatchers.IO) {
+                            ActionExecutor.executeAll(ctx, textActions)
+                        }
+                        didWork = true
                         messages.add(
                             ChatMessage(
                                 role = "assistant",
                                 content = clean,
-                                actionsJson = actions.toString()
+                                actionsJson = sig,
+                                executed = true,
+                                results = results
+                            )
+                        )
+                        history.add(ChatMessage(role = "assistant", content = clean))
+                        history.add(ChatMessage(role = "user", content = toolNote(results)))
+                        continue
+                    }
+
+                    if (!liveCfg.autoExecute) {
+                        messages.add(ChatMessage(role = "assistant", content = clean))
+                        break
+                    }
+
+                    val sig = calls.joinToString("|") { it.name + it.arguments }
+                    repeats = if (sig == lastSig) repeats + 1 else 0
+                    lastSig = sig
+                    if (repeats >= 2) {
+                        messages.add(
+                            ChatMessage(
+                                role = "assistant",
+                                content = "I stopped because the same step kept repeating without making progress."
                             )
                         )
                         break
                     }
 
-                    status = if (step == 1) "Running actions…" else "Step $step…"
-                    val results = withContext(Dispatchers.IO) { ActionExecutor.executeAll(ctx, actions) }
+                    status = if (step == 1) "Working…" else "Step $step…"
+                    history.add(
+                        ChatMessage(
+                            role = "assistant",
+                            content = clean,
+                            toolCallsJson = ActionParser.toolCallsJson(calls)
+                        )
+                    )
+                    val shown = ArrayList<String>()
+                    for (c in calls) {
+                        val out = withContext(Dispatchers.IO) { runTool(liveCfg, c) }
+                        history.add(ChatMessage(role = "tool", content = out, toolCallId = c.id))
+                        shown.add(out)
+                    }
                     didWork = true
                     messages.add(
                         ChatMessage(
                             role = "assistant",
                             content = clean,
-                            actionsJson = actions.toString(),
                             executed = true,
-                            results = results
+                            results = shown
                         )
                     )
-                    val toolText = "[ACTION RESULTS]\n" + results.joinToString("\n") +
-                        "\n\nContinue the task now. If everything the user asked for is finished, reply with one short line and no [ACTIONS] block. If a step failed, fix it yourself and try again. Never paste code into the reply."
-                    history.add(ChatMessage(role = "user", content = toolText))
                 }
                 if (step >= maxSteps) {
                     messages.add(
