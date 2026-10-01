@@ -67,16 +67,14 @@ jobs:
       - name: Publish APK as a Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v4.4
-          name: OmniTask AI v4.4
+          tag_name: v4.5
+          name: OmniTask AI v4.5
           body: |
             Download **OmniTask-AI.apk** below and install it on your phone.
 
-            New in v4.4 - the big reliability fix:
-            - Real tool calling instead of parsing text, so it works like a proper agent
-            - It no longer gets stuck repeating the same step (that was the looping bug)
-            - One "wait for build" step instead of spamming the build status
-            - A guard that stops the loop if it ever repeats itself, plus a stop button
-            - Everything from v4.3: full conversation memory, no code in chat, neon logo and theme
+            New in v4.5 - fixes the Gemini "thought_signature" error:
+            - Gemini 3 tool calls are now echoed back exactly as received, so the HTTP 400 error is gone
+            - The no-tools fallback cleans up the conversation first, so it no longer fails either
+            - Everything from v4.4: real tool calling, wait_for_build, repeat guard, stop button, neon theme
           files: OmniTask-AI.apk
           make_latest: true

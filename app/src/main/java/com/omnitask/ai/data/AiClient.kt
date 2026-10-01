@@ -15,7 +15,11 @@ import java.util.concurrent.TimeUnit
 data class ToolCall(val id: String, val name: String, val arguments: String)
 
 /** A model reply: the short visible text plus any tool calls it wants run. */
-data class ChatResult(val content: String, val toolCalls: List<ToolCall>)
+data class ChatResult(
+    val content: String,
+    val toolCalls: List<ToolCall>,
+    val toolCallsRaw: String? = null
+)
 
 /**
  * OpenAI-compatible chat client that uses real function calling. Works with
@@ -115,26 +119,45 @@ object AiClient {
     private fun parseReply(text: String): ChatResult {
         val json = JSONObject(text)
         val msg = json.getJSONArray("choices").getJSONObject(0).optJSONObject("message")
-            ?: return ChatResult("", emptyList())
+            ?: return ChatResult("", emptyList(), null)
         val content = if (msg.isNull("content")) "" else msg.optString("content", "")
         val calls = ArrayList<ToolCall>()
-        val arr = msg.optJSONArray("tool_calls")
-        if (arr != null) {
-            for (i in 0 until arr.length()) {
-                val c = arr.optJSONObject(i) ?: continue
+        val raw = msg.optJSONArray("tool_calls")
+        val safeRaw = JSONArray()
+        if (raw != null) {
+            for (i in 0 until raw.length()) {
+                val c = raw.optJSONObject(i) ?: continue
                 val fn = c.optJSONObject("function") ?: continue
                 // Some providers (Gemini included) send arguments as an object instead of a string.
-                val raw = fn.opt("arguments")
-                val args = when (raw) {
-                    is JSONObject -> raw.toString()
-                    is JSONArray -> raw.toString()
-                    is String -> raw
+                val argsRaw = fn.opt("arguments")
+                val args = when (argsRaw) {
+                    is JSONObject -> argsRaw.toString()
+                    is JSONArray -> argsRaw.toString()
+                    is String -> argsRaw
                     else -> "{}"
                 }
                 calls.add(ToolCall(c.optString("id", "call_" + i), fn.optString("name"), args))
+
+                // Gemini 3 puts a thought_signature inside extra_content and rejects the
+                // next request with HTTP 400 if the call is replayed without it, so the
+                // tool call is echoed back exactly as it arrived. If a provider sent no
+                // signature at all, Google's documented skip value keeps the turn alive.
+                var extra = c.optJSONObject("extra_content")
+                val hasSig = extra != null &&
+                    (extra.optJSONObject("google")?.has("thought_signature") == true ||
+                        extra.optJSONObject("vertex")?.has("thought_signature") == true)
+                if (!hasSig) {
+                    if (extra == null) extra = JSONObject()
+                    extra.put(
+                        "google",
+                        JSONObject().put("thought_signature", "skip_thought_signature_validator")
+                    )
+                    c.put("extra_content", extra)
+                }
+                safeRaw.put(c)
             }
         }
-        return ChatResult(content, calls)
+        return ChatResult(content, calls, if (safeRaw.length() > 0) safeRaw.toString() else null)
     }
 
     private fun buildBody(

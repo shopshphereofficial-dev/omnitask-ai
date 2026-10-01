@@ -212,7 +212,23 @@ fun AppRoot() {
                         withContext(Dispatchers.IO) { AiClient.chat(liveCfg, prompt, history, useTools) }
                     } catch (e: Exception) {
                         if (useTools) {
-                            // The provider may not accept tools - fall back to the plain text protocol.
+                            // The provider may not accept tools - fall back to the plain text
+                            // protocol. Tool messages have to be flattened first, because a
+                            // request without tools cannot carry them.
+                            val plain = ArrayList<ChatMessage>()
+                            history.forEach { m ->
+                                when (m.role) {
+                                    "tool" -> plain.add(
+                                        ChatMessage(role = "user", content = "[ACTION RESULTS]\n" + m.content)
+                                    )
+                                    "assistant" -> plain.add(
+                                        ChatMessage(role = "assistant", content = m.content.ifBlank { "Working on it…" })
+                                    )
+                                    else -> plain.add(ChatMessage(role = m.role, content = m.content))
+                                }
+                            }
+                            history.clear()
+                            history.addAll(plain)
                             useTools = false
                             withContext(Dispatchers.IO) { AiClient.chat(liveCfg, prompt, history, false) }
                         } else {
@@ -306,7 +322,7 @@ fun AppRoot() {
                         ChatMessage(
                             role = "assistant",
                             content = clean,
-                            toolCallsJson = ActionParser.toolCallsJson(calls)
+                            toolCallsJson = result.toolCallsRaw ?: ActionParser.toolCallsJson(calls)
                         )
                     )
                     val shown = ArrayList<String>()

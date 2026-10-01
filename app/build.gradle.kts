@@ -11,8 +11,8 @@ android {
         applicationId = "com.omnitask.ai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "4.4"
+        versionCode = 10
+        versionName = "4.5"
     }
 
     buildTypes {
