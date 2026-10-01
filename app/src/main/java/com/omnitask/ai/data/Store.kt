@@ -114,7 +114,7 @@ object Store {
                 Agent(
                     id = o.optString("id"),
                     name = o.optString("name", "Agent"),
-                    emoji = o.optString("emoji", "🤖"),
+                    emoji = o.optString("emoji", ""),
                     systemPrompt = o.optString("systemPrompt", ""),
                     providerId = o.optString("providerId", ""),
                     baseUrl = o.optString("baseUrl", ""),
@@ -127,7 +127,9 @@ object Store {
             emptyList()
         }
         return if (list.any { it.id == DEFAULT_AGENT_ID }) {
-            list
+            list.map {
+                if (it.id == DEFAULT_AGENT_ID) it.copy(name = "OmniTask", emoji = "") else it
+            }
         } else {
             listOf(defaultAgent()) + list
         }
@@ -135,8 +137,8 @@ object Store {
 
     private fun defaultAgent() = Agent(
         id = DEFAULT_AGENT_ID,
-        name = "Assistant",
-        emoji = "🤖",
+        name = "OmniTask",
+        emoji = "",
         systemPrompt = "",
         isDefault = true
     )

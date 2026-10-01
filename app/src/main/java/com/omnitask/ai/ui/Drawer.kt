@@ -1,7 +1,9 @@
 package com.omnitask.ai.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.Icons
@@ -22,10 +24,12 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.omnitask.ai.R
 import com.omnitask.ai.data.Agent
 import com.omnitask.ai.data.Conversation
 import java.text.SimpleDateFormat
@@ -74,7 +78,17 @@ fun OmniDrawer(
                         fontWeight = if (a.id == activeAgentId) FontWeight.Bold else FontWeight.Normal
                     )
                 },
-                leadingContent = { Text(a.emoji.ifBlank { "🤖" }, fontSize = 20.sp) },
+                leadingContent = {
+                    if (a.emoji.isBlank()) {
+                        Image(
+                            painter = painterResource(R.drawable.ic_logo),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    } else {
+                        Text(a.emoji, fontSize = 20.sp)
+                    }
+                },
                 trailingContent = {
                     if (a.id == activeAgentId) {
                         Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)

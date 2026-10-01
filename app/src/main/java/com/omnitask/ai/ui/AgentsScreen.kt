@@ -92,7 +92,7 @@ fun AgentsScreen(
             agents.forEach { a ->
                 ListItem(
                     headlineContent = {
-                        Text("${a.emoji.ifBlank { "🤖" }} ${a.name}", fontWeight = FontWeight.Medium)
+                        Text(if (a.emoji.isBlank()) a.name else "${a.emoji} ${a.name}", fontWeight = FontWeight.Medium)
                     },
                     supportingContent = {
                         Text(
@@ -130,7 +130,7 @@ fun AgentEditScreen(
 ) {
     val isNew = initial == null
     var name by remember { mutableStateOf(initial?.name ?: "") }
-    var emoji by remember { mutableStateOf(initial?.emoji ?: "🤖") }
+    var emoji by remember { mutableStateOf(initial?.emoji ?: "") }
     var systemPrompt by remember { mutableStateOf(initial?.systemPrompt ?: "") }
     var useCustom by remember { mutableStateOf(initial != null && initial.providerId.isNotBlank()) }
     var providerId by remember { mutableStateOf(initial?.providerId?.takeIf { it.isNotBlank() } ?: "openai") }
@@ -139,7 +139,7 @@ fun AgentEditScreen(
     var apiKey by remember { mutableStateOf(initial?.apiKey ?: "") }
     var expanded by remember { mutableStateOf(false) }
 
-    val emojiChoices = listOf("🤖", "🧠", "💼", "📚", "🏋️", "👨‍🍳", "🎵", "✈️", "💰", "🩺", "📝", "🛠️", "🎓", "🎮", "🧑‍💻")
+    val emojiChoices = listOf("🧠", "💼", "📚", "🏋️", "👨‍🍳", "🎵", "✈️", "💰", "🩺", "📝", "🛠️", "🎓", "🎮", "🧑‍💻")
 
     Scaffold(
         topBar = {
@@ -162,7 +162,7 @@ fun AgentEditScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(emoji.ifBlank { "🤖" }, fontSize = 40.sp)
+                Text(emoji.ifBlank { "✦" }, fontSize = 40.sp)
                 Spacer(Modifier.width(12.dp))
                 OutlinedTextField(
                     value = emoji,
@@ -290,7 +290,7 @@ fun AgentEditScreen(
                         Agent(
                             id = initial?.id ?: UUID.randomUUID().toString(),
                             name = name.trim(),
-                            emoji = emoji.ifBlank { "🤖" },
+                            emoji = emoji.trim(),
                             systemPrompt = systemPrompt,
                             providerId = if (useCustom) providerId else "",
                             baseUrl = if (useCustom) baseUrl else "",

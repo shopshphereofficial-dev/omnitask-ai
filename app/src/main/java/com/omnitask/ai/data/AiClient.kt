@@ -121,7 +121,7 @@ object AiClient {
                 .put("role", "system")
                 .put("content", systemPrompt.replace("{currentDateTime}", now))
         )
-        history.takeLast(24).forEach { m ->
+        history.takeLast(40).forEach { m ->
             messages.put(JSONObject().put("role", m.role).put("content", m.content))
         }
         return JSONObject()

@@ -76,6 +76,27 @@ object ActionParser {
         val idx = reply.indexOf(TAG)
         return if (idx < 0) reply.trim() else reply.substring(0, idx).trim()
     }
+
+    /**
+     * Removes fenced code blocks so raw code or config can never show up in the
+     * chat, even if the model slips and writes some.
+     */
+    fun stripCodeFences(text: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < text.length) {
+            val start = text.indexOf("```", i)
+            if (start < 0) {
+                sb.append(text.substring(i))
+                break
+            }
+            sb.append(text.substring(i, start))
+            val end = text.indexOf("```", start + 3)
+            if (end < 0) break
+            i = end + 3
+        }
+        return sb.toString().replace(Regex("\\n{3,}"), "\n\n").trim()
+    }
 }
 
 /**

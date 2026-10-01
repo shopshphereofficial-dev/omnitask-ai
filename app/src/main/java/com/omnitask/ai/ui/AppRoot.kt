@@ -31,6 +31,7 @@ import com.omnitask.ai.data.ProviderPreset
 import com.omnitask.ai.data.Store
 import com.omnitask.ai.schedule.Scheduler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -51,6 +52,7 @@ fun AppRoot() {
     var busy by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf("") }
+    var job by remember { mutableStateOf<Job?>(null) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var schedules by remember { mutableStateOf(Store.loadSchedules(ctx)) }
 
@@ -162,12 +164,20 @@ fun AppRoot() {
         status = "Thinking…"
         val prompt = AiClient.systemPromptFor(agent)
 
-        scope.launch {
+        job = scope.launch {
+            // The whole conversation is the context, so it never forgets what it was working on.
             val history = ArrayList<ChatMessage>()
-            history.add(ChatMessage(role = "user", content = t))
+            messages.takeLast(40).forEach { m ->
+                if (m.content.isNotBlank()) {
+                    history.add(ChatMessage(role = m.role, content = m.content))
+                }
+            }
+            if (history.isEmpty()) history.add(ChatMessage(role = "user", content = t))
             try {
                 var step = 0
-                val maxSteps = 12
+                val maxSteps = 20
+                var didWork = false
+                var nudged = false
                 while (step < maxSteps) {
                     step++
                     val live = agents.firstOrNull { it.id == activeAgentId } ?: agent
@@ -176,10 +186,24 @@ fun AppRoot() {
                         AiClient.chatBlocking(liveCfg, prompt, history)
                     }
                     val actions = ActionParser.parse(reply)
-                    val clean = ActionParser.strip(reply).ifBlank { "Working on it…" }
+                    val clean = ActionParser.stripCodeFences(ActionParser.strip(reply))
+                        .ifBlank { "Working on it…" }
                     history.add(ChatMessage(role = "assistant", content = clean))
 
                     if (actions == null || actions.length() == 0) {
+                        if (didWork && !nudged) {
+                            // It stopped right after doing work - make sure it really finished.
+                            nudged = true
+                            messages.add(ChatMessage(role = "assistant", content = clean))
+                            history.add(
+                                ChatMessage(
+                                    role = "user",
+                                    content = "Double-check before you finish: is everything the user asked for really done and verified? " +
+                                        "If anything is still missing, do it now. If it is all done, reply with one short line and no [ACTIONS] block."
+                                )
+                            )
+                            continue
+                        }
                         messages.add(ChatMessage(role = "assistant", content = clean))
                         break
                     }
@@ -196,6 +220,7 @@ fun AppRoot() {
 
                     status = if (step == 1) "Running actions…" else "Step $step…"
                     val results = withContext(Dispatchers.IO) { ActionExecutor.executeAll(ctx, actions) }
+                    didWork = true
                     messages.add(
                         ChatMessage(
                             role = "assistant",
@@ -208,25 +233,36 @@ fun AppRoot() {
                     val toolText = "[ACTION RESULTS]\n" + results.joinToString("\n") +
                         "\n\nContinue the task now. If everything the user asked for is finished, reply with one short line and no [ACTIONS] block. If a step failed, fix it yourself and try again. Never paste code into the reply."
                     history.add(ChatMessage(role = "user", content = toolText))
-
-                    if (step >= maxSteps) {
-                        messages.add(
-                            ChatMessage(
-                                role = "assistant",
-                                content = "I paused at my step limit. Say \"continue\" and I will carry on from here."
-                            )
+                }
+                if (step >= maxSteps) {
+                    messages.add(
+                        ChatMessage(
+                            role = "assistant",
+                            content = "I paused at my step limit. Say \"continue\" and I will carry on from here."
                         )
-                    }
+                    )
                 }
                 persistConversation()
             } catch (e: Exception) {
-                errorText = e.message ?: "Something went wrong"
+                if (e is kotlinx.coroutines.CancellationException) {
+                    messages.add(ChatMessage(role = "assistant", content = "Stopped."))
+                } else {
+                    errorText = e.message ?: "Something went wrong"
+                }
                 persistConversation()
             } finally {
                 busy = false
                 status = ""
+                job = null
             }
         }
+    }
+
+    fun stopTask() {
+        job?.cancel()
+        job = null
+        busy = false
+        status = ""
     }
 
     fun runActions(msg: ChatMessage) {
@@ -360,7 +396,8 @@ fun AppRoot() {
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     onNewChat = { newChat() },
                     onQuickProvider = { p -> quickSwitchProvider(p) },
-                    status = status
+                    status = status,
+                    onStop = { stopTask() }
                 )
             }
         }

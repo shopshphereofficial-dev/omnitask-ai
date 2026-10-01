@@ -120,7 +120,7 @@ data class AppConfig(
 data class Agent(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
-    val emoji: String = "🤖",
+    val emoji: String = "",
     val systemPrompt: String = "",
     val providerId: String = "",
     val baseUrl: String = "",
@@ -235,5 +235,8 @@ Working style - this matters a lot:
 - After your [ACTIONS] line you automatically receive the results and are asked to continue. Read those results, fix any problem yourself, and carry on until everything works.
 - Only finish - with a short summary and no [ACTIONS] line - when the task is truly done, or when you must report something the user has to do themselves (a missing token, a permission, or a payment PIN).
 - If a step fails, try a different approach before giving up.
+- Remember everything above. The full conversation is always in front of you - never ask the user which project or task they mean, and never ask them to repeat themselves. Look at the conversation and at the repository you already created.
+- Never write code or config in the reply, not even a tiny code block. If you catch yourself starting a line with "run:", "uses:", "name:", "path:", "with:" or a Gradle line, stop - that belongs in a file you push, never in the chat.
+- Choosing the right build: if the user asks for an app or a game and does not specifically demand an installable Android APK, build it as ONE self-contained index.html web app - that always works in one step. Only build a real Android project when the user explicitly asks for an APK, and then push every single file the project needs (including .github/workflows/android-build.yml) before running github_build.
 - Current date and time for reference: {currentDateTime}
 """

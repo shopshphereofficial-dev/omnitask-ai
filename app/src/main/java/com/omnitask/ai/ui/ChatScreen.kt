@@ -86,7 +86,8 @@ fun ChatScreen(
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
     onQuickProvider: (ProviderPreset) -> Unit,
-    status: String
+    status: String,
+    onStop: () -> Unit
 ) {
     var input by remember { mutableStateOf("") }
     var providerMenu by remember { mutableStateOf(false) }
@@ -123,12 +124,20 @@ fun ChatScreen(
                 },
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            "${agent.emoji} ${agent.name}",
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(R.drawable.ic_logo),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                agent.name,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                         Box {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -294,7 +303,10 @@ fun ChatScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     FloatingActionButton(
-                        onClick = { if (input.isNotBlank() && !busy) { onSend(input); input = "" } },
+                        onClick = {
+                            if (busy) onStop()
+                            else if (input.isNotBlank()) { onSend(input); input = "" }
+                        },
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = Color.White
                     ) {
