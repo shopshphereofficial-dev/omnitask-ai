@@ -67,14 +67,16 @@ jobs:
       - name: Publish APK as a Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v4.1
-          name: OmniTask AI v4.1
+          tag_name: v4.2
+          name: OmniTask AI v4.2
           body: |
             Download **OmniTask-AI.apk** below and install it on your phone.
 
-            New in v4.1:
-            - "Get a GitHub token" button - opens GitHub with the right scopes already ticked
-            - Tapping Test GitHub now fills in your username automatically
-            - Everything from v4.0: GitHub integration, in-chat model switch, fresh model list, encrypted storage, working build pipeline
+            New in v4.2:
+            - Works like a real agent: it keeps going on its own until the task is finished instead of stopping half way
+            - No more code in the chat - it only shows short progress lines and the result
+            - Spinning app logo and a loading circle while it works
+            - Fresh neon logo, new app icon and a new neon dark interface
+            - Everything from v4.1: GitHub integration, in-chat model switch, fresh model list, encrypted storage, working build pipeline
           files: OmniTask-AI.apk
           make_latest: true

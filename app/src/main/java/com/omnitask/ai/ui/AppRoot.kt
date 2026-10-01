@@ -50,6 +50,7 @@ fun AppRoot() {
 
     var busy by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var schedules by remember { mutableStateOf(Store.loadSchedules(ctx)) }
 
@@ -149,7 +150,6 @@ fun AppRoot() {
         val t = text.trim()
         if (t.isEmpty() || busy) return
         val agent = agents.firstOrNull { it.id == activeAgentId } ?: agents.first()
-        val cfg = effectiveCfg(agent)
         if (activeConvId == null) {
             val conv = Conversation(agentId = agent.id, title = t.take(40))
             conversations = conversations + conv
@@ -159,55 +159,72 @@ fun AppRoot() {
         messages.add(ChatMessage(role = "user", content = t))
         busy = true
         errorText = null
+        status = "Thinking…"
         val prompt = AiClient.systemPromptFor(agent)
+
         scope.launch {
+            val history = ArrayList<ChatMessage>()
+            history.add(ChatMessage(role = "user", content = t))
             try {
-                val history = messages.map { ChatMessage(id = it.id, role = it.role, content = it.content) }
-                val streamMsg = ChatMessage(role = "assistant", content = "")
-                messages.add(streamMsg)
-                val reply = try {
-                    withContext(Dispatchers.IO) {
-                        AiClient.chatStream(cfg, prompt, history) { delta ->
-                            val i = messages.indexOfFirst { it.id == streamMsg.id }
-                            if (i >= 0) {
-                                messages[i] = messages[i].copy(content = messages[i].content + delta)
-                            }
-                        }
+                var step = 0
+                val maxSteps = 12
+                while (step < maxSteps) {
+                    step++
+                    val live = agents.firstOrNull { it.id == activeAgentId } ?: agent
+                    val liveCfg = effectiveCfg(live)
+                    val reply = withContext(Dispatchers.IO) {
+                        AiClient.chatBlocking(liveCfg, prompt, history)
                     }
-                } catch (e: Exception) {
-                    // Streaming failed before producing anything - retry without streaming.
-                    val i = messages.indexOfFirst { it.id == streamMsg.id }
-                    if (i >= 0 && messages[i].content.isBlank()) messages.removeAt(i)
-                    withContext(Dispatchers.IO) { AiClient.chatBlocking(cfg, prompt, history) }
+                    val actions = ActionParser.parse(reply)
+                    val clean = ActionParser.strip(reply).ifBlank { "Working on it…" }
+                    history.add(ChatMessage(role = "assistant", content = clean))
+
+                    if (actions == null || actions.length() == 0) {
+                        messages.add(ChatMessage(role = "assistant", content = clean))
+                        break
+                    }
+                    if (!liveCfg.autoExecute) {
+                        messages.add(
+                            ChatMessage(
+                                role = "assistant",
+                                content = clean,
+                                actionsJson = actions.toString()
+                            )
+                        )
+                        break
+                    }
+
+                    status = if (step == 1) "Running actions…" else "Step $step…"
+                    val results = withContext(Dispatchers.IO) { ActionExecutor.executeAll(ctx, actions) }
+                    messages.add(
+                        ChatMessage(
+                            role = "assistant",
+                            content = clean,
+                            actionsJson = actions.toString(),
+                            executed = true,
+                            results = results
+                        )
+                    )
+                    val toolText = "[ACTION RESULTS]\n" + results.joinToString("\n") +
+                        "\n\nContinue the task now. If everything the user asked for is finished, reply with one short line and no [ACTIONS] block. If a step failed, fix it yourself and try again. Never paste code into the reply."
+                    history.add(ChatMessage(role = "user", content = toolText))
+
+                    if (step >= maxSteps) {
+                        messages.add(
+                            ChatMessage(
+                                role = "assistant",
+                                content = "I paused at my step limit. Say \"continue\" and I will carry on from here."
+                            )
+                        )
+                    }
                 }
-                val actions = ActionParser.parse(reply)
-                val clean = ActionParser.strip(reply)
-                var results: List<String> = emptyList()
-                var executed = false
-                if (actions != null && cfg.autoExecute) {
-                    results = withContext(Dispatchers.IO) { ActionExecutor.executeAll(ctx, actions) }
-                    executed = true
-                }
-                val finalMsg = ChatMessage(
-                    id = streamMsg.id,
-                    role = "assistant",
-                    content = clean.ifBlank { "Done." },
-                    actionsJson = actions?.toString(),
-                    executed = executed,
-                    results = results
-                )
-                val i = messages.indexOfFirst { it.id == streamMsg.id }
-                if (i >= 0) messages[i] = finalMsg else messages.add(finalMsg)
                 persistConversation()
             } catch (e: Exception) {
                 errorText = e.message ?: "Something went wrong"
-                messages.removeAll {
-                    it.role == "assistant" && it.content.isBlank() &&
-                        it.actionsJson == null && it.results.isEmpty()
-                }
                 persistConversation()
             } finally {
                 busy = false
+                status = ""
             }
         }
     }
@@ -342,7 +359,8 @@ fun AppRoot() {
                     onRunActions = { runActions(it) },
                     onOpenDrawer = { scope.launch { drawerState.open() } },
                     onNewChat = { newChat() },
-                    onQuickProvider = { p -> quickSwitchProvider(p) }
+                    onQuickProvider = { p -> quickSwitchProvider(p) },
+                    status = status
                 )
             }
         }

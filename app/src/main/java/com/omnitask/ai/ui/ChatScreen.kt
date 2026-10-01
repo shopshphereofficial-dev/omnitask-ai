@@ -5,6 +5,12 @@ import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,13 +57,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.omnitask.ai.R
 import com.omnitask.ai.data.Agent
 import com.omnitask.ai.data.ChatMessage
 import com.omnitask.ai.data.Presets
@@ -76,12 +85,21 @@ fun ChatScreen(
     onRunActions: (ChatMessage) -> Unit,
     onOpenDrawer: () -> Unit,
     onNewChat: () -> Unit,
-    onQuickProvider: (ProviderPreset) -> Unit
+    onQuickProvider: (ProviderPreset) -> Unit,
+    status: String
 ) {
     var input by remember { mutableStateOf("") }
     var providerMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val ctx = LocalContext.current
+
+    val spin = rememberInfiniteTransition(label = "spin")
+    val spinAngle by spin.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing)),
+        label = "angle"
+    )
 
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -168,7 +186,11 @@ fun ChatScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(agent.emoji.ifBlank { "🤖" }, fontSize = 56.sp)
+                    Image(
+                        painter = painterResource(R.drawable.ic_logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(72.dp)
+                    )
                     Spacer(Modifier.height(12.dp))
                     Text("What can I do for you?", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                     Text(
@@ -199,15 +221,24 @@ fun ChatScreen(
                     items(messages, key = { it.id }) { m ->
                         MessageBubble(m, enabled = !busy) { onRunActions(it) }
                     }
-                    if (busy && (messages.isEmpty() || messages.last().role == "user")) {
+                    if (busy) {
                         item {
                             Row(
                                 Modifier.padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Thinking…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Image(
+                                    painter = painterResource(R.drawable.ic_logo),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .rotate(spinAngle)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    if (status.isBlank()) "Working…" else status,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
@@ -263,11 +294,19 @@ fun ChatScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     FloatingActionButton(
-                        onClick = { if (input.isNotBlank()) { onSend(input); input = "" } },
+                        onClick = { if (input.isNotBlank() && !busy) { onSend(input); input = "" } },
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = Color.White
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                        if (busy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = Color.White
+                            )
+                        } else {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                        }
                     }
                 }
             }

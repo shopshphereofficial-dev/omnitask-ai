@@ -13,21 +13,24 @@ fun OmniTaskTheme(content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
     val colors = if (dark) {
         darkColorScheme(
-            primary = Color(0xFF8AB4F8),
-            secondary = Color(0xFF81C995),
-            tertiary = Color(0xFFF28B82),
-            background = Color(0xFF17181C),
-            surface = Color(0xFF1F2025),
-            surfaceVariant = Color(0xFF2B2D34)
+            primary = Color(0xFF7C4DFF),
+            onPrimary = Color.White,
+            secondary = Color(0xFF00E5FF),
+            tertiary = Color(0xFFFF4081),
+            background = Color(0xFF0B0B14),
+            surface = Color(0xFF14141F),
+            surfaceVariant = Color(0xFF1E1E2E),
+            onSurface = Color(0xFFE8E8F0),
+            onSurfaceVariant = Color(0xFF9E9EB3)
         )
     } else {
         lightColorScheme(
-            primary = Color(0xFF1A73E8),
-            secondary = Color(0xFF188038),
-            tertiary = Color(0xFFD93025),
-            background = Color(0xFFF6F8FC),
+            primary = Color(0xFF6200EE),
+            secondary = Color(0xFF00A6B8),
+            tertiary = Color(0xFFD81B60),
+            background = Color(0xFFF7F6FC),
             surface = Color(0xFFFFFFFF),
-            surfaceVariant = Color(0xFFE8EAED)
+            surfaceVariant = Color(0xFFE9E7F5)
         )
     }
     MaterialTheme(
