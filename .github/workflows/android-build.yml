@@ -67,14 +67,17 @@ jobs:
       - name: Publish APK as a Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v4.5
-          name: OmniTask AI v4.5
+          tag_name: v4.6
+          name: OmniTask AI v4.6
           body: |
             Download **OmniTask-AI.apk** below and install it on your phone.
 
-            New in v4.5 - fixes the Gemini "thought_signature" error:
-            - Gemini 3 tool calls are now echoed back exactly as received, so the HTTP 400 error is gone
-            - The no-tools fallback cleans up the conversation first, so it no longer fails either
-            - Everything from v4.4: real tool calling, wait_for_build, repeat guard, stop button, neon theme
+            New in v4.6 - Play Protect no longer blocks the app:
+            - Removed SEND_SMS and CALL_PHONE. Those two are exactly what made Play Protect
+              show "App blocked to protect your device / sensitive data".
+            - SMS now opens the composer with your text ready; calls open the dialer pre-filled.
+              One tap on send/call - nothing else changed.
+            - The app now asks for Contacts and Photos permission on launch, so "send Moomin
+              a WhatsApp message" works by name instead of the AI saying it can't.
           files: OmniTask-AI.apk
           make_latest: true

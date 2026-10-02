@@ -5,10 +5,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Let the AI find contacts by name for calls, SMS and WhatsApp messages -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <!-- Optional: used only for direct SMS sending; the app falls back to the SMS composer if not granted -->
-    <uses-permission android:name="android.permission.SEND_SMS" />
-    <!-- Optional: used only for direct calling; the app falls back to the dialer if not granted -->
-    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- NOTE: SEND_SMS and CALL_PHONE were removed on purpose. They are the two
+         permissions Google Play Protect uses to block a sideloaded app with the
+         "can request access to sensitive data" warning. Nothing is lost: SMS
+         opens the composer and calls open the dialer, both pre-filled. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- Needed so the AI can open any installed app by name -->
     <uses-permission
