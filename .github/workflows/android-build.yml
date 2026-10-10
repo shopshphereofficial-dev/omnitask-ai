@@ -81,3 +81,11 @@ jobs:
               a WhatsApp message" works by name instead of the AI saying it can't.
           files: OmniTask-AI.apk
           make_latest: true
+
+      - name: Publish APK as a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(find app/build/outputs/apk -name '*.apk' | head -1)
+          cp "$APK" app.apk
+          gh release create latest app.apk --title "Latest APK" --notes "Auto-built APK from source. Direct download." --latest 2>/dev/null || gh release upload latest app.apk --clobber
